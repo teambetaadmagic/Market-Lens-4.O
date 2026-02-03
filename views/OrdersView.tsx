@@ -62,6 +62,7 @@ export const OrdersView: React.FC = () => {
     const [scannedOrder, setScannedOrder] = useState<any>(null);
     const [lastScannedBarcode, setLastScannedBarcode] = useState<string>('');
     const [barcodeDetected, setBarcodeDetected] = useState(false);
+    const [showPermissionDeniedModal, setShowPermissionDeniedModal] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -504,6 +505,7 @@ export const OrdersView: React.FC = () => {
                         friendlyError = "No camera found on device.";
                     } else if (err.name === 'NotAllowedError' || err.message?.includes('Permission')) {
                         friendlyError = "Camera permission denied. Try again.";
+                        setShowPermissionDeniedModal(true);
                     } else if (err.name === 'NotReadableError') {
                         friendlyError = "Camera is in use by another app.";
                     } else if (err.name === 'NotFoundError') {
@@ -2223,6 +2225,51 @@ export const OrdersView: React.FC = () => {
                     </div>
                 )
             }
+
+            {/* Camera Permission Denied Modal */}
+            {showPermissionDeniedModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95">
+                        <div className="flex justify-center mb-4">
+                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                                <AlertCircle size={32} className="text-red-600" />
+                            </div>
+                        </div>
+                        <h2 className="text-lg font-bold text-gray-900 text-center mb-2">Camera Permission Denied</h2>
+                        <p className="text-sm text-gray-600 text-center mb-6">
+                            To scan labels, please enable camera access in your browser settings.
+                        </p>
+                        
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                            <h3 className="font-bold text-sm text-gray-900 mb-2">How to enable camera:</h3>
+                            <ol className="text-xs text-gray-700 space-y-1.5 list-decimal list-inside">
+                                <li>Click the lock icon next to the URL bar</li>
+                                <li>Find "Camera" in the permissions list</li>
+                                <li>Change it from "Block" to "Allow"</li>
+                                <li>Reload the page and try again</li>
+                            </ol>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowPermissionDeniedModal(false)}
+                                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm hover:bg-gray-200 transition active:scale-95"
+                            >
+                                Close
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowPermissionDeniedModal(false);
+                                    setShowScanner(false);
+                                }}
+                                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition active:scale-95"
+                            >
+                                Got it
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };
