@@ -2381,9 +2381,9 @@ const SupplierGroupCard: React.FC<{
                                     }}
                                     canEdit={canEdit}
                                     onShowHistory={(log) => onShowHistory?.(log)}
-                                    suppliers={suppliers}
+                                    suppliers={availableSuppliers}
                                     onSupplierChange={(supplierId, supplierName) => {
-                                        updateLogSupplier(log.id, supplierName);
+                                        onUpdateLogs(log.id, supplierName);
                                         // Record the assignment in history for auto-assignment next time
                                         recordProductSupplierAssignment(log.productId, supplierId, supplierName, 
                                             log.hasSizes ? Object.keys(log.orderedQty)[0] : undefined);
