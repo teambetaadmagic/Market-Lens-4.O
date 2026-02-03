@@ -21,6 +21,15 @@ export const db = firebaseDb;
 export const saveShopifyOrder = async (orderData: any, shopName?: string, shopifyDomain?: string): Promise<string> => {
   try {
     const orderId = `order_${orderData.orderName}_${Date.now()}`;
+    
+    // Calculate total price from line items if not provided
+    let totalPrice = orderData.totalPrice;
+    if (!totalPrice && orderData.lineItems && orderData.lineItems.length > 0) {
+      totalPrice = orderData.lineItems.reduce((sum: number, item: any) => {
+        return sum + (parseFloat(item.price) * item.quantity);
+      }, 0);
+    }
+    
     const shopifyOrder: ShopifyOrder = {
       id: orderId,
       orderName: orderData.orderName,
@@ -37,9 +46,9 @@ export const saveShopifyOrder = async (orderData: any, shopName?: string, shopif
         product_id: item.product_id,
         variant_id: item.variant_id
       })),
-      totalPrice: orderData.totalPrice,
-      customerEmail: orderData.customerEmail,
-      customerName: orderData.customerName,
+      totalPrice: totalPrice || 0,
+      customerEmail: orderData.customerEmail || '',
+      customerName: orderData.customerName || '',
       status: 'confirmed',
       createdAt: Timestamp.now().toMillis(),
       syncedAt: Timestamp.now().toMillis(),

@@ -590,8 +590,10 @@ export const OrdersView: React.FC = () => {
 
             for (const item of orderData.lineItems) {
                 if (item.image_url) {
-                    // We need to fetch the image and convert to base64 for our app
                     try {
+                        console.log(`[OrdersView] Processing item: ${item.title}, Variant: ${item.variant_title}, Qty: ${item.quantity}`);
+                        
+                        // Fetch and convert image to base64
                         const imgRes = await fetch(item.image_url);
                         const blob = await imgRes.blob();
                         const reader = new FileReader();
@@ -604,65 +606,73 @@ export const OrdersView: React.FC = () => {
                         const compressedBase64 = await compressImage(imageBase64);
                         const hash = await computeImageHash(compressedBase64);
 
-                        // Prepare quantities
+                        // Prepare quantities with size/variant
                         const itemQtys: Record<string, number> = {};
-                        if (item.variant_title && item.variant_title !== 'Default Title') {
+                        const hasSizes = item.variant_title && item.variant_title !== 'Default Title';
+                        
+                        if (hasSizes) {
                             itemQtys[item.variant_title] = item.quantity;
+                            console.log(`[OrdersView] Added size: ${item.variant_title} = ${item.quantity}`);
                         } else {
                             itemQtys['Total'] = item.quantity;
+                            console.log(`[OrdersView] Added quantity: Total = ${item.quantity}`);
                         }
 
+                        // Save to daily logs - NO product name or price, just image and quantity/size
                         await addOrUpdateDailyLog(
                             compressedBase64,
                             hash,
                             itemQtys,
-                            item.variant_title && item.variant_title !== 'Default Title',
-                            undefined, // supplier
-                            item.title,
-                            parseFloat(item.price),
-                            undefined // supplier phone
+                            hasSizes,
+                            undefined, // no supplier
+                            `Item from order ${orderData.orderName}`, // generic description
+                            undefined, // NO price
+                            undefined // no supplier phone
                         );
                         logsCreated.push(item.title);
                         itemsProcessed++;
+                        console.log(`[OrdersView] ✅ Processed item successfully`);
                     } catch (imgErr) {
-                        console.error(`Failed to process image for ${item.title}:`, imgErr);
+                        console.error(`[OrdersView] Failed to process image for ${item.title}:`, imgErr);
                     }
+                } else {
+                    console.warn(`[OrdersView] Skipping item without image: ${item.title}`);
                 }
             }
 
             if (itemsProcessed === 0) {
-                throw new Error("Failed to process any items from the order");
+                throw new Error("Failed to process any items from the order - no items with images found");
             }
+            
+            console.log(`[OrdersView] Successfully processed ${itemsProcessed} items from order`);
 
             // 3. Create a Purchase Order from the Shopify order
             try {
-                const poItems: PurchaseOrderItem[] = logsCreated.map((logTitle, idx) => {
-                    const item = orderData.lineItems[idx];
-                    return {
+                const poItems: PurchaseOrderItem[] = orderData.lineItems
+                    .filter((item: any) => item.image_url) // Only items with images
+                    .map((item: any, idx: number) => ({
                         id: `item_${Date.now()}_${idx}`,
                         productId: `shopify_${item.id}`,
                         title: item.title,
-                        quantity: { [item.variant_title || 'Total']: item.quantity },
-                        price: parseFloat(item.price),
+                        quantity: { 
+                            [item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : 'Total']: item.quantity 
+                        },
+                        price: 0, // NO price
                         hasSizes: !!(item.variant_title && item.variant_title !== 'Default Title'),
                         imageUrl: item.image_url
-                    };
-                });
+                    }));
 
-                const totalAmount = poItems.reduce((sum, item) => {
-                    const qty = Object.values(item.quantity).reduce((a, b) => a + b, 0);
-                    return sum + (item.price * qty);
-                }, 0);
+                console.log(`[OrdersView] Creating PO with ${poItems.length} items from Shopify order`);
 
                 await savePurchaseOrder({
                     supplierId: undefined,
                     supplierName: `Shopify - ${orderData.shopName || orderData.shopifyDomain}`,
                     supplierPhone: undefined,
                     items: poItems,
-                    totalAmount,
+                    totalAmount: 0, // NO total amount
                     status: 'confirmed',
                     linkedShopifyOrderId: shopifyOrderId,
-                    notes: `Auto-created from Shopify order ${cleanedName}`,
+                    notes: `Auto-created from Shopify order ${cleanedName} - ${itemsProcessed} items scanned`,
                     history: [
                         {
                             action: 'created_from_shopify',
@@ -672,7 +682,7 @@ export const OrdersView: React.FC = () => {
                         }
                     ]
                 });
-                console.log('[OrdersView] Created purchase order from Shopify order');
+                console.log('[OrdersView] ✅ Purchase order created successfully');
             } catch (poErr) {
                 console.error('[OrdersView] Failed to create purchase order:', poErr);
                 // Continue anyway - daily logs were created successfully
