@@ -935,12 +935,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const fetchShopifyOrder = useCallback(async (orderName: string, specificStore?: ShopifyConfig) => {
+    // Check cache first - avoid duplicate API calls within 30 seconds
+    const cacheKey = `order_${orderName}_${specificStore?.shopifyDomain || 'all'}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    if (cachedData) {
+      const { data, timestamp } = JSON.parse(cachedData);
+      if (Date.now() - timestamp < 30000) { // 30 second cache
+        console.log('[fetchShopifyOrder] ⚡ Using cached order data');
+        return data;
+      }
+    }
+
     // If a specific store is provided, only search that store
     if (specificStore) {
       console.log('[fetchShopifyOrder] Searching in specific store:', specificStore.shopName || specificStore.shopifyDomain);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
@@ -959,12 +970,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
-            console.log(`[fetchShopifyOrder] ✅ Order found in ${specificStore.shopName || specificStore.shopifyDomain}!`);
-            return {
+            const result = {
               ...data,
               shopName: specificStore.shopName || specificStore.shopifyDomain,
               shopifyDomain: specificStore.shopifyDomain
             };
+            // Cache the result
+            sessionStorage.setItem(cacheKey, JSON.stringify({ data: result, timestamp: Date.now() }));
+            console.log(`[fetchShopifyOrder] ✅ Order found in ${specificStore.shopName || specificStore.shopifyDomain}!`);
+            return result;
           }
         } else if (response.status === 404) {
           throw new Error(`Order "${orderName}" not found in ${specificStore.shopName || specificStore.shopifyDomain}`);
@@ -994,9 +1008,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain} (attempt ${retryCount + 1})`);
         
-        // Add a request timeout of 45 seconds
+        // Add a request timeout of 20 seconds (faster fail)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
@@ -1015,14 +1029,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
+            const result = {
+              ...data,
+              shopName: config.shopName || config.shopifyDomain,
+              shopifyDomain: config.shopifyDomain
+            };
+            // Cache the result
+            sessionStorage.setItem(cacheKey, JSON.stringify({ data: result, timestamp: Date.now() }));
             console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName || config.shopifyDomain}!`);
             return {
               type: 'success',
-              data: {
-                ...data,
-                shopName: config.shopName || config.shopifyDomain,
-                shopifyDomain: config.shopifyDomain
-              }
+              data: result
             };
           }
         } else {

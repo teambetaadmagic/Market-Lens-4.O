@@ -37,14 +37,14 @@ export default async function handler(req, res) {
         let order = null;
 
         try {
-            // Simple and reliable: Just fetch recent orders and filter client-side
+            // Simple and reliable: Fetch 50 most recent orders (sufficient for recent scans) and filter client-side
             console.log('[Shopify Order API] Fetching recent orders...');
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
 
             const response = await fetch(
-                `https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`,
+                `https://${fullDomain}/admin/api/2024-01/orders.json?limit=50&status=any&order=created_at:desc`,
                 {
                     method: 'GET',
                     cache: 'no-store',
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
             throw err;
         }
 
-        // 2. Map line items to include product images and variants
+        // 2. Map line items to include product images and variants (parallelized with Promise.all)
         const lineItemsWithDetails = await Promise.all(order.line_items.map(async (item) => {
             // If item doesn't have a product_id, it might be a custom item
             if (!item.product_id) {
@@ -128,35 +128,55 @@ export default async function handler(req, res) {
                 };
             }
 
-            // Fetch product to get image
-            const productUrl = `https://${fullDomain}/admin/api/2024-01/products/${item.product_id}.json`;
-            const productResponse = await fetch(productUrl, {
-                headers: { 'X-Shopify-Access-Token': accessToken.trim() }
-            });
+            try {
+                // Fetch product to get image - parallelized with timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const productUrl = `https://${fullDomain}/admin/api/2024-01/products/${item.product_id}.json`;
+                const productResponse = await fetch(productUrl, {
+                    signal: controller.signal,
+                    headers: { 'X-Shopify-Access-Token': accessToken.trim() }
+                });
+                clearTimeout(timeoutId);
 
-            let imageUrl = null;
-            if (productResponse.ok) {
-                const productData = await productResponse.json();
-                // Try to find image for this variant
-                if (item.variant_id) {
-                    const variantImage = productData.product.images.find(img => img.variant_ids.includes(item.variant_id));
-                    imageUrl = variantImage ? variantImage.src : (productData.product.image ? productData.product.image.src : null);
-                } else {
-                    imageUrl = productData.product.image ? productData.product.image.src : null;
+                let imageUrl = null;
+                if (productResponse.ok) {
+                    const productData = await productResponse.json();
+                    // Try to find image for this variant
+                    if (item.variant_id) {
+                        const variantImage = productData.product.images.find(img => img.variant_ids.includes(item.variant_id));
+                        imageUrl = variantImage ? variantImage.src : (productData.product.image ? productData.product.image.src : null);
+                    } else {
+                        imageUrl = productData.product.image ? productData.product.image.src : null;
+                    }
                 }
-            }
 
-            return {
-                id: item.id,
-                product_id: item.product_id,
-                variant_id: item.variant_id,
-                title: item.title,
-                variant_title: item.variant_title,
-                quantity: item.quantity,
-                price: item.price,
-                sku: item.sku,
-                image_url: imageUrl
-            };
+                return {
+                    id: item.id,
+                    product_id: item.product_id,
+                    variant_id: item.variant_id,
+                    title: item.title,
+                    variant_title: item.variant_title,
+                    quantity: item.quantity,
+                    price: item.price,
+                    sku: item.sku,
+                    image_url: imageUrl
+                };
+            } catch (err) {
+                // If product fetch fails, continue without image
+                return {
+                    id: item.id,
+                    product_id: item.product_id,
+                    variant_id: item.variant_id,
+                    title: item.title,
+                    variant_title: item.variant_title,
+                    quantity: item.quantity,
+                    price: item.price,
+                    sku: item.sku,
+                    image_url: null
+                };
+            }
         }));
 
         return res.json({
