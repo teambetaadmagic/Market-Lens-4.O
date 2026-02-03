@@ -9,6 +9,7 @@ import { SuppliersView } from './views/SuppliersView';
 import { AdminSettingsView } from './views/AdminSettingsView';
 import { isConfigured } from './firebaseConfig'; 
 import { Settings, AlertCircle, ShieldAlert, Database, CheckCircle2, WifiOff, X } from 'lucide-react';
+import { DEBUG } from './utils/debug';
 
 const SetupGuide: React.FC = () => {
   return (
@@ -136,8 +137,11 @@ const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState('orders');
   const { user, login, isLoading, loginError, initError, isInitialized, previewImage, previewMeta, setPreviewImage } = useStore();
 
+  DEBUG.log('APP', 'AppContent render state', { isInitialized, user: user?.username, hasInitError: !!initError });
+
   // Show loading screen while Firebase is initializing
   if (!isInitialized) {
+    DEBUG.log('APP', 'Showing loading screen', { initError: initError?.code });
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-gray-100 p-8 text-center">
@@ -146,6 +150,12 @@ const AppContent: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Loading</h2>
           <p className="text-gray-600 text-sm">Initializing application...</p>
+          {initError && (
+            <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+              <p className="text-xs text-red-600 font-mono">Error: {initError.code || 'unknown'}</p>
+              <p className="text-xs text-red-500 mt-1">{initError.message}</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -153,15 +163,18 @@ const AppContent: React.FC = () => {
 
   // Show login if not authenticated
   if (!user) {
+    DEBUG.log('APP', 'Showing login screen');
     return <LoginPage onLogin={login} isLoading={isLoading} error={loginError} />;
   }
+
+  DEBUG.log('APP', 'Showing main app for user:', user.username);
 
   // Handle initialization errors
   if (initError) {
       if (initError.code === 'permission-denied') return <RulesGuide />;
       if (initError.code === 'unavailable') return <OfflineGuide />;
       // For any other errors, still show the app but log the error
-      console.warn('Init error:', initError);
+      DEBUG.warn('APP', 'Init error but continuing:', initError);
   }
 
   const renderView = () => {
