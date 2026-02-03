@@ -11,7 +11,7 @@ const QUICK_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL
 
 export const OrdersView: React.FC = () => {
     const storeData = useStore();
-    const { suppliers = [], addOrUpdateDailyLog, findProductByHash, dailyLogs = [], products = [], getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder, getMostRecentSupplierForProduct } = storeData;
+    const { suppliers = [], addOrUpdateDailyLog, findProductByHash, dailyLogs = [], products = [], getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder, getMostRecentSupplierForProduct, shopifyConfigs = [] } = storeData;
 
     // Check if user can edit this view
     const canEdit = user ? canEditView(user.role, 'orders') : false;
@@ -29,6 +29,9 @@ export const OrdersView: React.FC = () => {
     const [description, setDescription] = useState("");
     const [hasSizes, setHasSizes] = useState(false);
     const [price, setPrice] = useState('');
+
+    // Store Selection State
+    const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
     // Supplier Input State
     const [supplierInput, setSupplierInput] = useState("");
@@ -564,13 +567,21 @@ export const OrdersView: React.FC = () => {
     const handleOrderScan = async (orderName: string) => {
         if (!orderName || !orderName.trim()) return;
 
+        // Check if a store is selected
+        if (!selectedStoreId) {
+            setScanError('❌ Please select a store first before scanning');
+            setScanStatus('error');
+            await stopScanner();
+            return;
+        }
+
         // Clean order name - Shopify orders often look like #1001 or 1001
         let cleanedName = orderName.trim();
         if (!cleanedName.startsWith('#') && /^\d+$/.test(cleanedName)) {
             cleanedName = `#${cleanedName}`;
         }
 
-        console.log('[handleOrderScan] Starting scan with order:', cleanedName);
+        console.log('[handleOrderScan] Starting scan with order:', cleanedName, 'from store:', selectedStoreId);
         setScanStatus('searching');
         setScanError(null);
         setScannedOrder(null);
@@ -579,8 +590,14 @@ export const OrdersView: React.FC = () => {
         await stopScanner();
 
         try {
-            console.log('[handleOrderScan] Calling fetchShopifyOrder with:', cleanedName);
-            const orderData = await fetchShopifyOrder(cleanedName);
+            // Get the selected store config
+            const selectedStore = shopifyConfigs.find(s => s.id === selectedStoreId);
+            if (!selectedStore) {
+                throw new Error('Selected store not found');
+            }
+
+            console.log('[handleOrderScan] Calling fetchShopifyOrder with:', cleanedName, 'from store:', selectedStore.shopName || selectedStore.shopifyDomain);
+            const orderData = await fetchShopifyOrder(cleanedName, selectedStore);
             console.log('[handleOrderScan] Successfully fetched order:', orderData);
             
             if (!orderData || !orderData.lineItems || orderData.lineItems.length === 0) {
@@ -1311,49 +1328,66 @@ export const OrdersView: React.FC = () => {
             )}
 
             {/* Sticky Native Header */}
-            <div className="flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
-                <h1 className="text-xl font-bold text-gray-900 tracking-tight">Purchase Entry</h1>
-                <div className="flex gap-2">
-                    {false && <button
-                        onClick={() => setMergeMode(!mergeMode)}
-                        className={`${mergeMode ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'} px-3 py-1.5 rounded-full shadow-md hover:opacity-90 transition active:scale-95 flex items-center gap-1.5 text-xs font-bold`}
-                        title="Merge duplicate entries"
-                    >
-                        <GitMerge size={16} />
-                        <span>Merge</span>
-                        {dailyLogs.filter(l => l.status === 'ordered').length > 1 && (
-                            <span className="ml-1 bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">
-                                {dailyLogs.filter(l => l.status === 'ordered').length}
-                            </span>
-                        )}
-                    </button>}
-                    <button
-                        onClick={() => setShowScanner(true)}
-                        className="bg-blue-600 text-white px-3 py-1.5 rounded-full shadow-md hover:bg-blue-700 transition active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
-                        disabled={isSaving || !canEdit || scanStatus === 'searching'}
-                    >
-                        {scanStatus === 'searching' ? <Loader2 className="animate-spin" size={16} /> : <Scan size={16} strokeWidth={2.5} />}
-                        <span className="font-bold text-xs">Scan Label</span>
-                    </button>
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="bg-gray-900 text-white px-3 py-1.5 rounded-full shadow-md hover:bg-black transition active:scale-95 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={isSaving || !canEdit}
-                    >
-                        <Plus size={16} strokeWidth={2.5} />
-                        <span className="font-bold text-xs">New Order</span>
-                    </button>
+            <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
+                <div className="flex items-center justify-between mb-3">
+                    <h1 className="text-xl font-bold text-gray-900 tracking-tight">Purchase Entry</h1>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setShowScanner(true)}
+                            className="bg-blue-600 text-white px-3 py-1.5 rounded-full shadow-md hover:bg-blue-700 transition active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+                            disabled={isSaving || !canEdit || scanStatus === 'searching' || !selectedStoreId}
+                            title={!selectedStoreId ? 'Select a store first' : ''}
+                        >
+                            {scanStatus === 'searching' ? <Loader2 className="animate-spin" size={16} /> : <Scan size={16} strokeWidth={2.5} />}
+                            <span className="font-bold text-xs">Scan Label</span>
+                        </button>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="bg-gray-900 text-white px-3 py-1.5 rounded-full shadow-md hover:bg-black transition active:scale-95 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={isSaving || !canEdit}
+                        >
+                            <Plus size={16} strokeWidth={2.5} />
+                            <span className="font-bold text-xs">New Order</span>
+                        </button>
+                    </div>
                 </div>
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    disabled={!canEdit}
-                />
+                
+                {/* Store Selector */}
+                {shopifyConfigs.length > 0 && (
+                    <div className="mb-2">
+                        <label className="text-xs font-semibold text-gray-700 block mb-1">Select Store</label>
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={selectedStoreId || ''}
+                                onChange={(e) => setSelectedStoreId(e.target.value || null)}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">-- Choose a store --</option>
+                                {shopifyConfigs.map(store => (
+                                    <option key={store.id} value={store.id}>
+                                        {store.shopName || store.shopifyDomain}
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedStoreId && (
+                                <p className="text-xs text-green-600 font-semibold whitespace-nowrap">
+                                    ✓ {shopifyConfigs.find(s => s.id === selectedStoreId)?.shopName || 'Selected'}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                disabled={!canEdit}
+            />
 
             {!draftImage && groupedOrders.length === 0 && (
                 <div className="flex flex-col items-center justify-center mt-20 text-gray-400 animate-in fade-in slide-in-from-bottom-4">
