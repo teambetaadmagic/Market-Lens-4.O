@@ -357,7 +357,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('[StoreContext] Fatal error in Firestore initialization:', e);
       setIsInitialized(true);
       setInitError({ code: 'fatal-error', message: (e as any)?.message || 'Unknown error' });
-      return () => {};
+      return () => { };
     }
   }, []);
 
@@ -445,11 +445,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // 3. Handle Daily Log
       // Find ANY active log for this product today to merge into.
-      // This includes 'ordered', 'picked_partial', 'picked_full', 'dispatched'.
+      // Exclude 'dispatched' status to prevent merging into already-dispatched items.
       const existingLog = data.dailyLogs.find(l =>
         l.productId === productId &&
         l.date === today &&
-        ['ordered', 'picked_partial', 'picked_full', 'dispatched'].includes(l.status)
+        ['ordered', 'picked_partial', 'picked_full'].includes(l.status)
       );
 
       if (existingLog) {
