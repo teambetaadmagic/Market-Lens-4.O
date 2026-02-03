@@ -33,92 +33,83 @@ export default async function handler(req, res) {
         console.log('[Shopify Order API] Starting order search for:', orderName, 'at', fullDomain);
 
         let order = null;
-        let pageInfo = null;
 
-        // Fetch orders with pagination and filter client-side for more reliable search
-        const searchOrdersWithPagination = async () => {
-            console.log('[Shopify Order API] Using pagination-based search...');
+        try {
+            // Simple and reliable: Just fetch recent orders and filter client-side
+            console.log('[Shopify Order API] Fetching recent orders...');
             
-            try {
-                let hasNextPage = true;
-                let cursor = null;
-                let searchAttempts = 0;
-                const maxAttempts = 5; // Search through up to 5 pages (250 orders per page)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-                while (hasNextPage && searchAttempts < maxAttempts && !order) {
-                    searchAttempts++;
-                    console.log(`[Shopify Order API] Searching page ${searchAttempts}...`);
-
-                    // Create request URL with pagination
-                    let url = `https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`;
-                    if (cursor) {
-                        url += `&after=${cursor}`;
-                    }
-
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-                    const res = await fetch(url, {
-                        method: 'GET',
-                        cache: 'no-store',
-                        signal: controller.signal,
-                        headers: {
-                            'X-Shopify-Access-Token': accessToken.trim(),
-                            'Content-Type': 'application/json',
-                        },
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    if (!res.ok) {
-                        console.warn(`[Shopify Order API] Non-OK response: ${res.status}`);
-                        return null;
-                    }
-
-                    const data = await res.json();
-                    
-                    if (data.orders && data.orders.length > 0) {
-                        console.log(`[Shopify Order API] Found ${data.orders.length} orders on page ${searchAttempts}`);
-                        
-                        // Search for exact match
-                        order = data.orders.find(o => o.name === orderName);
-                        
-                        if (order) {
-                            console.log('[Shopify Order API] ✅ Order found:', order.name);
-                            return order;
-                        }
-                    }
-
-                    // Check for next page
-                    const linkHeader = res.headers.get('link');
-                    hasNextPage = linkHeader && linkHeader.includes('rel="next"');
-                    
-                    if (hasNextPage) {
-                        // Extract cursor from link header
-                        const nextMatch = linkHeader.match(/after=([^&;]+)/);
-                        cursor = nextMatch ? nextMatch[1] : null;
-                    }
+            const response = await fetch(
+                `https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`,
+                {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: controller.signal,
+                    headers: {
+                        'X-Shopify-Access-Token': accessToken.trim(),
+                        'Content-Type': 'application/json',
+                    },
                 }
+            );
 
-                return order;
-            } catch (err) {
-                console.error('[Shopify Order API] Pagination search error:', err.message);
-                return null;
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.error(`[Shopify Order API] Shopify API returned ${response.status}`);
+                const errorText = await response.text();
+                console.error('[Shopify Order API] Error:', errorText);
+                
+                if (response.status === 401) {
+                    return res.status(401).json({
+                        success: false,
+                        message: 'Invalid access token or insufficient permissions'
+                    });
+                }
+                
+                return res.status(response.status).json({
+                    success: false,
+                    message: `Shopify API error: ${response.status}`
+                });
             }
-        };
 
-        // Use pagination-based search (more reliable than API search parameter)
-        order = await searchOrdersWithPagination();
+            const data = await response.json();
 
-        if (!order) {
-            console.log('[Shopify Order API] Order not found in pagination search for:', orderName);
-            return res.status(404).json({
-                success: false,
-                message: `Order "${orderName}" not found in Shopify after searching recent orders.`
-            });
+            if (!data.orders || data.orders.length === 0) {
+                console.log('[Shopify Order API] No orders found on Shopify');
+                return res.status(404).json({
+                    success: false,
+                    message: `No orders found. Store may have no orders yet.`
+                });
+            }
+
+            console.log(`[Shopify Order API] Retrieved ${data.orders.length} orders from Shopify`);
+
+            // Search for exact match
+            order = data.orders.find(o => o.name === orderName);
+
+            if (!order) {
+                console.log(`[Shopify Order API] Order "${orderName}" not found in ${data.orders.length} orders`);
+                console.log('[Shopify Order API] Available orders:', data.orders.slice(0, 5).map(o => o.name).join(', '));
+                return res.status(404).json({
+                    success: false,
+                    message: `Order "${orderName}" not found in this store`
+                });
+            }
+            console.log('[Shopify Order API] ✅ Order found:', order.name, 'with', order.line_items.length, 'items');
+
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                console.error('[Shopify Order API] Request timeout');
+                return res.status(504).json({
+                    success: false,
+                    message: 'Request timeout - Shopify API took too long to respond'
+                });
+            }
+            console.error('[Shopify Order API] Fetch error:', err.message);
+            throw err;
         }
-
-        console.log('[Shopify Order API] Found order:', order.name, 'with', order.line_items.length, 'items');
 
         // 2. Map line items to include product images and variants
         const lineItemsWithDetails = await Promise.all(order.line_items.map(async (item) => {
