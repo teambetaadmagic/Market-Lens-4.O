@@ -1470,22 +1470,46 @@ export const OrdersView: React.FC = () => {
 
                         <div className="p-6 bg-white border-t space-y-4">
                             <div className="flex flex-col items-center gap-4">
-                                <div className="text-center">
+                                <div className={`w-full text-center rounded-xl p-4 transition-all ${
+                                    scanStatus === 'success' ? 'bg-green-50 border-2 border-green-500' : 
+                                    scanStatus === 'error' ? 'bg-red-50 border-2 border-red-500' : 
+                                    'bg-gray-50 border-2 border-gray-200'
+                                }`}>
                                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Scanned Order</p>
-                                    <p className="text-4xl font-bold text-blue-600">{lastScannedBarcode || '—'}</p>
+                                    <p className={`text-4xl font-bold ${
+                                        scanStatus === 'success' ? 'text-green-600' :
+                                        scanStatus === 'error' ? 'text-red-600' :
+                                        'text-blue-600'
+                                    }`}>{lastScannedBarcode || '—'}</p>
                                 </div>
+                                
                                 {scanStatus === 'searching' && (
                                     <div className="flex items-center gap-2">
                                         <Loader2 size={16} className="animate-spin text-blue-600" />
                                         <span className="text-xs text-blue-600 font-medium">Processing...</span>
                                     </div>
                                 )}
+                                
                                 {scanStatus === 'success' && (
-                                    <span className="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full animate-pulse">
-                                        ✓ Order Added
-                                    </span>
+                                    <div className="w-full flex flex-col items-center gap-2">
+                                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white animate-bounce">
+                                            <Check size={24} />
+                                        </div>
+                                        <span className="text-sm font-bold text-green-600">✓ Order Added Successfully</span>
+                                    </div>
                                 )}
-                                {lastScannedBarcode && scanStatus !== 'success' && scanStatus !== 'searching' && (
+                                
+                                {scanStatus === 'error' && (
+                                    <div className="w-full flex flex-col items-center gap-2">
+                                        <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center text-white animate-pulse">
+                                            <AlertCircle size={24} />
+                                        </div>
+                                        <span className="text-sm font-bold text-red-600">Failed to Add Order</span>
+                                        <p className="text-xs text-red-600 text-center">{scanError}</p>
+                                    </div>
+                                )}
+                                
+                                {lastScannedBarcode && scanStatus !== 'success' && scanStatus !== 'searching' && scanStatus !== 'error' && (
                                     <button
                                         onClick={() => {
                                             if (lastScannedBarcode.trim()) {
