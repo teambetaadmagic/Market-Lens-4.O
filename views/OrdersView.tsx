@@ -590,8 +590,14 @@ export const OrdersView: React.FC = () => {
             setScanStatus('processing');
 
             // 1. Save Shopify order to Firebase
-            const shopifyOrderId = await saveShopifyOrder(orderData);
-            console.log('[OrdersView] Saved Shopify order to Firebase:', shopifyOrderId);
+            // Include Shopify store metadata so Firestore and downstream UIs
+            // know exactly which connected store this order belongs to.
+            const shopifyOrderId = await saveShopifyOrder(
+                orderData,
+                orderData.shopName,
+                orderData.shopifyDomain
+            );
+            console.log('[OrdersView] Saved Shopify order to Firebase:', shopifyOrderId, 'from store:', orderData.shopName || orderData.shopifyDomain);
 
             // 2. Automatically create logs for each line item
             const logsCreated: DailyLog[] = [];
@@ -721,16 +727,23 @@ export const OrdersView: React.FC = () => {
             console.error("[handleOrderScan] Error code:", err?.code);
             
             let errorMsg = err.message || "Failed to process order. Try again.";
-            
-            // Provide specific error messages
-            if (errorMsg.includes('permission-denied')) {
-                errorMsg = "❌ Firestore permission denied. Check security rules.";
-            } else if (errorMsg.includes('not found')) {
-                errorMsg = `❌ Order not found. Check the order number and try again.`;
-            } else if (errorMsg.includes('No Shopify stores')) {
-                errorMsg = "❌ No Shopify stores connected. Add a store in Settings first.";
-            } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-                errorMsg = "❌ Invalid Shopify access token. Check your credentials in Settings.";
+
+            // If we have our detailed multi-store summary, surface it directly
+            if (errorMsg.startsWith('SHOPIFY_MULTI_STORE_SCAN_FAILED')) {
+                // Make it more readable for the user but still preserve per-store info
+                errorMsg = "❌ Scan failed across connected stores.\n\n" +
+                    errorMsg.replace('SHOPIFY_MULTI_STORE_SCAN_FAILED: ', '');
+            } else {
+                // Provide specific error messages
+                if (errorMsg.includes('permission-denied')) {
+                    errorMsg = "❌ Firestore permission denied. Check security rules.";
+                } else if (errorMsg.includes('not found')) {
+                    errorMsg = `❌ Order not found. Check the order number and try again.`;
+                } else if (errorMsg.includes('No Shopify stores')) {
+                    errorMsg = "❌ No Shopify stores connected. Add a store in Settings first.";
+                } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
+                    errorMsg = "❌ Invalid Shopify access token. Check your credentials in Settings.";
+                }
             }
             
             setScanError(errorMsg);

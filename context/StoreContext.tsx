@@ -307,6 +307,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           shopName: doc.data().shopName
         } as ShopifyConfig));
         setShopifyConfigs(configs);
+        // Also update localStorage to keep it in sync
+        localStorage.setItem('market-lens-shopify-configs', JSON.stringify(configs));
         console.log('[Shopify Config] Loaded from Firestore:', configs.length, 'stores');
       }, handleError);
 
@@ -934,10 +936,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fetchShopifyOrder = useCallback(async (orderName: string) => {
     if (shopifyConfigs.length === 0) {
+      console.error('[fetchShopifyOrder] ERROR: No Shopify configs available! Available:', shopifyConfigs.length);
       throw new Error('No Shopify stores connected. Please add a store in Settings.');
     }
 
     console.log('[fetchShopifyOrder] Searching for order:', orderName, 'across', shopifyConfigs.length, 'stores');
+    console.log('[fetchShopifyOrder] Store list:', shopifyConfigs.map(c => `${c.shopName || c.shopifyDomain}`).join(', '));
 
     const searchStore = async (config: ShopifyConfig) => {
       try {
@@ -1000,14 +1004,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return successResult.data;
     }
 
-    // 2. Check for configuration errors
-    const configErrors = results.filter(result => result.type === 'error');
-    if (configErrors.length > 0) {
-      const errorDetails = configErrors.map(e => `${e.store} (${e.status || e.message})`).join(', ');
-      throw new Error(`Order not found. Also encountered connection errors with: ${errorDetails}. Please check Store Settings.`);
-    }
+    // 2. Build a detailed failure summary for better debugging in the UI
+    const errorDetails = results.map((r: any, idx: number) => {
+      const cfg = shopifyConfigs[idx];
+      const storeName = cfg.shopName || cfg.shopifyDomain;
+      if (r.type === 'error') {
+        return `${storeName}: ERROR (${r.status || r.message || 'unknown'})`;
+      }
+      if (r.type === 'not_found') {
+        return `${storeName}: NOT_FOUND`;
+      }
+      return `${storeName}: UNKNOWN_RESULT`;
+    }).join(' | ');
 
-    throw new Error(`Order "${orderName}" not found in any of the ${shopifyConfigs.length} connected stores.`);
+    throw new Error(
+      `SHOPIFY_MULTI_STORE_SCAN_FAILED: Order "${orderName}" not found. Per-store results => ${errorDetails}`
+    );
   }, [shopifyConfigs]);
 
   // Purchase Order Management Functions
