@@ -2055,68 +2055,7 @@ export const OrdersView: React.FC = () => {
                             ))}
                         </div>
 
-                        {/* SUPPLIER SUMMARY - Shows breakdown of products by supplier */}
-                        <div className="mt-8 pt-6 border-t border-gray-200">
-                            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-3">Product Distribution</h3>
-                            <div className="grid grid-cols-2 gap-2 px-2">
-                                {groupedOrders[0]?.suppliers.map((supplier) => {
-                                    const totalItems = supplier.logs.reduce((sum, log) => 
-                                        sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0);
-                                    const uniqueProducts = new Set(supplier.logs.map(l => l.productId)).size;
-                                    
-                                    return (
-                                        <div 
-                                            key={supplier.id} 
-                                            className="bg-gradient-to-br from-blue-50 to-blue-50 border border-blue-200 rounded-lg p-3 hover:shadow-md transition"
-                                        >
-                                            <div className="text-sm font-bold text-gray-900 truncate">{supplier.name}</div>
-                                            <div className="flex gap-3 mt-2 text-xs">
-                                                <div className="flex flex-col">
-                                                    <span className="text-gray-500 font-medium">Items</span>
-                                                    <span className="text-lg font-bold text-blue-600">{totalItems}</span>
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-gray-500 font-medium">Products</span>
-                                                    <span className="text-lg font-bold text-blue-600">{uniqueProducts}</span>
-                                                </div>
-                                            </div>
-                                            {supplier.phone && (
-                                                <div className="mt-2 text-[10px] text-gray-600 truncate">📞 {supplier.phone}</div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                                
-                                {/* Unassigned Summary */}
-                                {groupedOrders[0]?.suppliers.some(s => s.id === 'unknown') && (
-                                    <div 
-                                        className="bg-gradient-to-br from-amber-50 to-amber-50 border border-amber-200 rounded-lg p-3 hover:shadow-md transition"
-                                    >
-                                        <div className="text-sm font-bold text-gray-900">Unassigned</div>
-                                        <div className="flex gap-3 mt-2 text-xs">
-                                            <div className="flex flex-col">
-                                                <span className="text-gray-500 font-medium">Items</span>
-                                                <span className="text-lg font-bold text-amber-600">
-                                                    {groupedOrders[0]?.suppliers
-                                                        .find(s => s.id === 'unknown')?.logs
-                                                        .reduce((sum, log) => 
-                                                            sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0) || 0}
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-gray-500 font-medium">Products</span>
-                                                <span className="text-lg font-bold text-amber-600">
-                                                    {new Set(groupedOrders[0]?.suppliers
-                                                        .find(s => s.id === 'unknown')?.logs
-                                                        .map(l => l.productId) || []).size}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2 text-[10px] text-amber-700 font-medium">⚠️ Needs assignment</div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+
                     </div>
                 )
             }
