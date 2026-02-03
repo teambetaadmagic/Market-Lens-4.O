@@ -957,22 +957,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const data = await response.json();
           if (data.success) {
             console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName}!`);
-            return { ...data, shopName: config.shopName || config.shopifyDomain };
+            return { type: 'success', data: { ...data, shopName: config.shopName || config.shopifyDomain } };
           }
+        } else {
+          // Capture specific HTTP errors (401, 403)
+          return { type: 'error', status: response.status, store: config.shopName || config.shopifyDomain };
         }
       } catch (err) {
         console.warn(`[fetchShopifyOrder] Failed to search in store ${config.shopifyDomain}:`, err);
+        return { type: 'error', message: String(err), store: config.shopName || config.shopifyDomain };
       }
-      return null;
+      return { type: 'not_found' };
     };
 
     // Search all stores concurrently
     console.log(`[fetchShopifyOrder] executing ${shopifyConfigs.length} parallel requests...`);
     const results = await Promise.all(shopifyConfigs.map(config => searchStore(config)));
-    const foundOrder = results.find(result => result !== null);
 
-    if (foundOrder) {
-      return foundOrder;
+    // 1. Check for success
+    const successResult = results.find(result => result.type === 'success');
+    if (successResult && successResult.type === 'success') {
+      return successResult.data;
+    }
+
+    // 2. Check for configuration errors
+    const configErrors = results.filter(result => result.type === 'error');
+    if (configErrors.length > 0) {
+      const errorDetails = configErrors.map(e => `${e.store} (${e.status || e.message})`).join(', ');
+      throw new Error(`Order not found. Also encountered connection errors with: ${errorDetails}. Please check Store Settings.`);
     }
 
     throw new Error(`Order "${orderName}" not found in any of the ${shopifyConfigs.length} connected stores.`);
