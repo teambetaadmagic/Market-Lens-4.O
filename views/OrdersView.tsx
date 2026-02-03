@@ -561,6 +561,7 @@ export const OrdersView: React.FC = () => {
             cleanedName = `#${cleanedName}`;
         }
 
+        console.log('[handleOrderScan] Starting scan with order:', cleanedName);
         setScanStatus('searching');
         setScanError(null);
         setScannedOrder(null);
@@ -569,7 +570,9 @@ export const OrdersView: React.FC = () => {
         await stopScanner();
 
         try {
+            console.log('[handleOrderScan] Calling fetchShopifyOrder with:', cleanedName);
             const orderData = await fetchShopifyOrder(cleanedName);
+            console.log('[handleOrderScan] Successfully fetched order:', orderData);
             
             if (!orderData || !orderData.lineItems || orderData.lineItems.length === 0) {
                 throw new Error("No items found in order");
@@ -683,8 +686,24 @@ export const OrdersView: React.FC = () => {
                 setScanError(null);
             }, 4000);
         } catch (err: any) {
-            console.error("Order scan failed:", err);
-            setScanError(err.message || "Failed to process order. Try again.");
+            console.error("[handleOrderScan] ERROR:", err);
+            console.error("[handleOrderScan] Error message:", err?.message);
+            console.error("[handleOrderScan] Error code:", err?.code);
+            
+            let errorMsg = err.message || "Failed to process order. Try again.";
+            
+            // Provide specific error messages
+            if (errorMsg.includes('permission-denied')) {
+                errorMsg = "❌ Firestore permission denied. Check security rules.";
+            } else if (errorMsg.includes('not found')) {
+                errorMsg = `❌ Order not found. Check the order number and try again.`;
+            } else if (errorMsg.includes('No Shopify stores')) {
+                errorMsg = "❌ No Shopify stores connected. Add a store in Settings first.";
+            } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
+                errorMsg = "❌ Invalid Shopify access token. Check your credentials in Settings.";
+            }
+            
+            setScanError(errorMsg);
             setScanStatus('error');
             
             // Keep error visible for 5 seconds

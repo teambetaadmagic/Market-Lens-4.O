@@ -879,11 +879,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error('No Shopify stores connected. Please add a store in Settings.');
     }
 
-    console.log('[StoreContext] Searching for order:', orderName, 'across', shopifyConfigs.length, 'stores');
+    console.log('[fetchShopifyOrder] Searching for order:', orderName, 'across', shopifyConfigs.length, 'stores');
 
     // Try each config until we find the order
     for (const config of shopifyConfigs) {
       try {
+        console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain}`);
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -894,14 +895,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           })
         });
 
+        console.log(`[fetchShopifyOrder] Response status:`, response.status);
+
         if (response.ok) {
           const data = await response.json();
+          console.log(`[fetchShopifyOrder] Got response:`, data);
           if (data.success) {
+            console.log(`[fetchShopifyOrder] ✅ Order found!`);
             return { ...data, shopName: config.shopName || config.shopifyDomain };
+          } else {
+            console.log(`[fetchShopifyOrder] Response not successful:`, data.message);
           }
+        } else {
+          const errorText = await response.text();
+          console.warn(`[fetchShopifyOrder] API returned ${response.status}:`, errorText);
         }
       } catch (err) {
-        console.warn(`[StoreContext] Failed to search in store ${config.shopifyDomain}:`, err);
+        console.warn(`[fetchShopifyOrder] Failed to search in store ${config.shopifyDomain}:`, err);
       }
     }
 
