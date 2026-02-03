@@ -1454,11 +1454,13 @@ export const OrdersView: React.FC = () => {
                         </div>
 
                         <div className="p-6 bg-white border-t space-y-4">
-                            <div className="flex flex-col items-center gap-3 justify-center py-2">
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Scanned Order</p>
-                                <p className="text-3xl font-bold text-blue-600">{lastScannedBarcode || '—'}</p>
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="text-center">
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Scanned Order</p>
+                                    <p className="text-4xl font-bold text-blue-600">{lastScannedBarcode || '—'}</p>
+                                </div>
                                 {scanStatus === 'searching' && (
-                                    <div className="flex items-center gap-2 mt-2">
+                                    <div className="flex items-center gap-2">
                                         <Loader2 size={16} className="animate-spin text-blue-600" />
                                         <span className="text-xs text-blue-600 font-medium">Processing...</span>
                                     </div>
@@ -1467,6 +1469,19 @@ export const OrdersView: React.FC = () => {
                                     <span className="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full animate-pulse">
                                         ✓ Order Added
                                     </span>
+                                )}
+                                {lastScannedBarcode && scanStatus !== 'success' && scanStatus !== 'searching' && (
+                                    <button
+                                        onClick={() => {
+                                            if (lastScannedBarcode.trim()) {
+                                                handleOrderScan(lastScannedBarcode);
+                                            }
+                                        }}
+                                        className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition font-bold flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                        <Plus size={20} />
+                                        <span className="text-sm">ADD ORDER</span>
+                                    </button>
                                 )}
                             </div>
                         </div>
