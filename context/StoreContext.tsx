@@ -15,7 +15,6 @@ import {
   limit
 } from 'firebase/firestore';
 import { saveShopifyOrder, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, recordProductSupplierAssignment } from '../services/firestore';
-import { DEBUG } from '../utils/debug';
 
 interface ShopifyConfig {
   id: string;
@@ -29,7 +28,6 @@ interface StoreContextType extends AppState {
   user: User | null;
   isLoading: boolean;
   loginError: string | null;
-  isInitialized: boolean;
   login: (username: string, password: string) => void;
   logout: () => void;
 
@@ -92,8 +90,8 @@ const generateId = () => {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  DEBUG.log('STORE', 'StoreProvider initializing');
-  DEBUG.log('STORE', 'Firebase db instance:', db ? 'AVAILABLE' : 'MISSING');
+  console.log('=== STORE PROVIDER INITIALIZING ===');
+  console.log('Firebase db instance:', db ? 'AVAILABLE' : 'MISSING');
   
   const [data, setData] = useState<AppState>({
     suppliers: [],
@@ -109,7 +107,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<any>(null);
   const [previewImage, setPreviewImageState] = useState<string | null>(null);
   const [previewMeta, setPreviewMeta] = useState<PreviewMetadata | null>(null);
@@ -258,22 +255,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 1. Subscribe to Firestore Collections
   useEffect(() => {
-    DEBUG.log('STORE', 'Initializing Firestore listeners...');
+    console.log('[StoreContext] Initializing Firestore listeners...');
     
     const handleError = (error: any) => {
-      DEBUG.error('STORE', 'Firestore Listener Error', { code: error?.code, message: error?.message });
+      console.error("[Firestore Listener Error]:", error?.code, error?.message);
       if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
         setInitError(error);
-        setIsInitialized(true); // Still mark as initialized so we can show the error screen
       }
     };
 
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
       const suppliers = snapshot.docs.map(doc => doc.data() as Supplier);
-      DEBUG.log('STORE', `Suppliers synced: ${suppliers.length} records`);
+      console.log('[Suppliers] Synced from Firestore:', suppliers.length);
       setData(prev => ({ ...prev, suppliers }));
       setInitError(null);
-      setIsInitialized(true);
     }, handleError);
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -323,14 +318,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
     }, handleError);
 
-    // Set a timeout for initialization - if not initialized after 10 seconds, mark as initialized anyway
-    const initTimeout = setTimeout(() => {
-      console.warn('[StoreContext] Initialization timeout - marking as initialized after 10s');
-      setIsInitialized(true);
-    }, 10000);
-
     return () => {
-      clearTimeout(initTimeout);
       unsubSuppliers();
       unsubProducts();
       unsubLogs();
@@ -995,7 +983,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       user,
       isLoading,
       loginError,
-      isInitialized,
       login,
       logout,
 

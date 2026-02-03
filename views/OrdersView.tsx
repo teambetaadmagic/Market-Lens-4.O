@@ -2055,14 +2055,13 @@ export const OrdersView: React.FC = () => {
                         </div>
 
                         {/* SUPPLIER SUMMARY - Shows breakdown of products by supplier */}
-                        {groupedOrders.length > 0 && groupedOrders[0]?.suppliers && (
-                            <div className="mt-8 pt-6 border-t border-gray-200">
-                                <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-3">Product Distribution</h3>
-                                <div className="grid grid-cols-2 gap-2 px-2">
-                                    {groupedOrders[0]!.suppliers.map((supplier) => {
-                                        const totalItems = supplier.logs.reduce((sum, log) => 
-                                            sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0);
-                                        const uniqueProducts = new Set(supplier.logs.map(l => l.productId)).size;
+                        <div className="mt-8 pt-6 border-t border-gray-200">
+                            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-3">Product Distribution</h3>
+                            <div className="grid grid-cols-2 gap-2 px-2">
+                                {groupedOrders[0]?.suppliers.map((supplier) => {
+                                    const totalItems = supplier.logs.reduce((sum, log) => 
+                                        sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0);
+                                    const uniqueProducts = new Set(supplier.logs.map(l => l.productId)).size;
                                     
                                     return (
                                         <div 
@@ -2088,7 +2087,7 @@ export const OrdersView: React.FC = () => {
                                 })}
                                 
                                 {/* Unassigned Summary */}
-                                {groupedOrders[0]!.suppliers.some(s => s.id === 'unknown') && (
+                                {groupedOrders[0]?.suppliers.some(s => s.id === 'unknown') && (
                                     <div 
                                         className="bg-gradient-to-br from-amber-50 to-amber-50 border border-amber-200 rounded-lg p-3 hover:shadow-md transition"
                                     >
@@ -2097,7 +2096,7 @@ export const OrdersView: React.FC = () => {
                                             <div className="flex flex-col">
                                                 <span className="text-gray-500 font-medium">Items</span>
                                                 <span className="text-lg font-bold text-amber-600">
-                                                    {groupedOrders[0]!.suppliers
+                                                    {groupedOrders[0]?.suppliers
                                                         .find(s => s.id === 'unknown')?.logs
                                                         .reduce((sum, log) => 
                                                             sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0) || 0}
@@ -2106,7 +2105,7 @@ export const OrdersView: React.FC = () => {
                                             <div className="flex flex-col">
                                                 <span className="text-gray-500 font-medium">Products</span>
                                                 <span className="text-lg font-bold text-amber-600">
-                                                    {new Set(groupedOrders[0]!.suppliers
+                                                    {new Set(groupedOrders[0]?.suppliers
                                                         .find(s => s.id === 'unknown')?.logs
                                                         .map(l => l.productId) || []).size}
                                                 </span>
@@ -2117,7 +2116,6 @@ export const OrdersView: React.FC = () => {
                                 )}
                             </div>
                         </div>
-                        )}
                     </div>
                 )
             }
@@ -2380,9 +2378,9 @@ const SupplierGroupCard: React.FC<{
                                     }}
                                     canEdit={canEdit}
                                     onShowHistory={(log) => onShowHistory?.(log)}
-                                    suppliers={availableSuppliers}
+                                    suppliers={suppliers}
                                     onSupplierChange={(supplierId, supplierName) => {
-                                        onUpdateLogs(log.id, supplierName);
+                                        updateLogSupplier(log.id, supplierName);
                                         // Record the assignment in history for auto-assignment next time
                                         recordProductSupplierAssignment(log.productId, supplierId, supplierName, 
                                             log.hasSizes ? Object.keys(log.orderedQty)[0] : undefined);
