@@ -31,6 +31,8 @@ export default async function handler(req, res) {
         const fullDomain = `${cleanDomain}.myshopify.com`;
 
         console.log('[Shopify Order API] Starting order search for:', orderName, 'at', fullDomain);
+        console.log('[Shopify Order API] Token format:', accessToken.substring(0, 10) + '...' + accessToken.substring(accessToken.length - 5));
+        console.log('[Shopify Order API] Full domain:', fullDomain);
 
         let order = null;
 
