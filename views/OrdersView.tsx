@@ -129,8 +129,14 @@ export const OrdersView: React.FC = () => {
                 return sum + (qty * (log.price || 0));
             }, 0);
 
+            // Calculate remaining total qty (ordered - dispatched)
             const totalQty = logs.reduce((sum, log) => {
-                return sum + Object.values(log.orderedQty).reduce<number>((a, b) => a + (Number(b) || 0), 0);
+                const remaining = Object.entries(log.orderedQty).reduce<number>((a, [k, v]) => {
+                    const ordered = v || 0;
+                    const dispatched = log.dispatchedQty?.[k] || 0;
+                    return a + Math.max(0, ordered - dispatched);
+                }, 0);
+                return sum + remaining;
             }, 0);
 
             return {
@@ -2446,11 +2452,18 @@ const WatermarkedCard: React.FC<{ log: DailyLog; product: any; supplierName?: st
             ctx.fillRect(rectX, rectY, rectW, rectH);
 
             // 3. Text (centered)
-            const totalQty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-            let line1 = `Total Qty: ${totalQty}`;
+            const remainingTotal = Object.entries(log.orderedQty).reduce((acc: number, [k, v]) => {
+                const dispatched = (log.dispatchedQty?.[k] || 0);
+                return acc + Math.max(0, v - dispatched);
+            }, 0);
+            let line1 = `Remaining Qty: ${remainingTotal}`;
             let line2 = "";
             if (log.hasSizes) {
-                line2 = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join('  ');
+                line2 = Object.entries(log.orderedQty).map(([k, v]) => {
+                    const dispatched = (log.dispatchedQty?.[k] || 0);
+                    const remaining = Math.max(0, v - dispatched);
+                    return `${k}:${remaining}`;
+                }).join('  ');
             }
 
             const centerX = canvasWidth / 2; // canvas center
@@ -2789,9 +2802,21 @@ const EditableLogItem: React.FC<{
         timeStr = d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '');
     }
 
+    // Calculate remaining quantity (ordered - dispatched)
+    const calculateRemaining = (orderedQty: Record<string, number>, dispatchedQty: Record<string, number>) => {
+        const remaining: Record<string, number> = {};
+        Object.entries(orderedQty).forEach(([k, v]) => {
+            const dispatched = dispatchedQty[k] || 0;
+            remaining[k] = Math.max(0, v - dispatched);
+        });
+        return remaining;
+    };
+
+    const remainingQty = calculateRemaining(log.orderedQty, log.dispatchedQty || {});
+
     const qtyText = log.hasSizes
-        ? Object.entries(log.orderedQty).map(([k, v]) => `${k === 'Total' ? 'Free Size' : k}:${String(v)}`).join(', ')
-        : `${log.orderedQty['Total'] || 0}`;
+        ? Object.entries(remainingQty).map(([k, v]) => `${k === 'Total' ? 'Free Size' : k}:${String(v)}`).join(', ')
+        : `${remainingQty['Total'] || 0}`;
 
     // Prefer Supplier Name if product description is generic 'Item'
     const displayDescription = useMemo(() => {
