@@ -956,11 +956,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
-            console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName}!`);
-            return { type: 'success', data: { ...data, shopName: config.shopName || config.shopifyDomain } };
+            console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName || config.shopifyDomain}!`);
+            // Attach store metadata so downstream logic (PO creation, Firestore save)
+            // knows exactly which Shopify store this order came from.
+            return {
+              type: 'success',
+              data: {
+                ...data,
+                shopName: config.shopName || config.shopifyDomain,
+                shopifyDomain: config.shopifyDomain
+              }
+            };
           }
         } else {
-          // Capture specific HTTP errors (401, 403)
+          // Treat 404 as a normal "not found in this store" so that
+          // other connected stores can still be checked cleanly.
+          if (response.status === 404) {
+            console.log(`[fetchShopifyOrder] Order not found in store ${config.shopName || config.shopifyDomain} (404)`);
+            return { type: 'not_found', store: config.shopName || config.shopifyDomain };
+          }
+
+          // Capture specific HTTP errors (401, 403, etc.) as configuration issues.
+          console.warn(
+            `[fetchShopifyOrder] HTTP error from store ${config.shopName || config.shopifyDomain}:`,
+            response.status
+          );
           return { type: 'error', status: response.status, store: config.shopName || config.shopifyDomain };
         }
       } catch (err) {
