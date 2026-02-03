@@ -2330,9 +2330,11 @@ const SupplierGroupCard: React.FC<{
                     totalQty={totalQty}
                     logs={logs}
                     isOpen={isOpen}
+                    availableSuppliers={availableSuppliers}
                     onUpdateLogs={onUpdateLogs}
                     onUpdatePhone={onUpdatePhone}
                     onUpdateTag={onUpdateTag}
+                    onAssignSupplier={onAssignSupplier}
                     onGeneratePO={onGeneratePO}
                     onSendVendorPO={onSendVendorPO}
                     canEdit={canEdit}
@@ -2543,13 +2545,15 @@ const EditableSupplierHeader: React.FC<{
     totalQty: number;
     logs: DailyLog[];
     isOpen: boolean;
+    availableSuppliers: Supplier[];
     onUpdateLogs: (logId: string, name: string) => void;
     onUpdatePhone: (phone: string) => Promise<void>;
     onUpdateTag: (tag: string) => Promise<void>;
+    onAssignSupplier: (supplierId: string) => Promise<void>;
     onGeneratePO: () => void;
     onSendVendorPO: () => void;
     canEdit: boolean;
-}> = ({ supplierName, supplierId, supplierPhone, supplierTag, totalAmount, totalQty, logs, isOpen, onUpdateLogs, onUpdatePhone, onUpdateTag, onGeneratePO, onSendVendorPO, canEdit }) => {
+}> = ({ supplierName, supplierId, supplierPhone, supplierTag, totalAmount, totalQty, logs, isOpen, availableSuppliers, onUpdateLogs, onUpdatePhone, onUpdateTag, onAssignSupplier, onGeneratePO, onSendVendorPO, canEdit }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [newName, setNewName] = useState(supplierName);
 
