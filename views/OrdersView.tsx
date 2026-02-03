@@ -66,6 +66,7 @@ export const OrdersView: React.FC = () => {
     const [lastScannedBarcode, setLastScannedBarcode] = useState<string>('');
     const [barcodeDetected, setBarcodeDetected] = useState(false);
     const [showPermissionDeniedModal, setShowPermissionDeniedModal] = useState(false);
+    const [scannedOrderIds, setScannedOrderIds] = useState<Set<string>>(new Set()); // Track scanned orders to prevent duplicates
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -581,13 +582,22 @@ export const OrdersView: React.FC = () => {
             cleanedName = `#${cleanedName}`;
         }
 
+        // Check for duplicate order scan
+        if (scannedOrderIds.has(cleanedName)) {
+            setScanError(`⚠️ Order ${cleanedName} already added in this session`);
+            setScanStatus('error');
+            setLastScannedBarcode('');
+            setTimeout(() => {
+                setScanStatus('idle');
+                setScanError(null);
+            }, 3000);
+            return;
+        }
+
         console.log('[handleOrderScan] Starting scan with order:', cleanedName, 'from store:', selectedStoreId);
         setScanStatus('searching');
         setScanError(null);
         setScannedOrder(null);
-        
-        // Close scanner immediately - processing happens in background
-        await stopScanner();
 
         try {
             // Get the selected store config
@@ -615,6 +625,9 @@ export const OrdersView: React.FC = () => {
                 orderData.shopifyDomain
             );
             console.log('[OrdersView] Saved Shopify order to Firebase:', shopifyOrderId, 'from store:', orderData.shopName || orderData.shopifyDomain);
+
+            // Mark this order as scanned to prevent duplicates
+            setScannedOrderIds(prev => new Set(prev).add(cleanedName));
 
             // 2. Automatically create logs for each line item - PARALLELIZED for speed
             console.log(`[OrdersView] Processing ${orderData.lineItems.length} items in parallel...`);
@@ -735,12 +748,13 @@ export const OrdersView: React.FC = () => {
             })();
 
             setScanStatus('success');
-            // Keep success message visible for 4 seconds then auto-dismiss
+            // Clear scanned barcode for next scan - keep popup open
             setTimeout(() => {
+                setLastScannedBarcode('');
                 setScanStatus('idle');
                 setScannedOrder(null);
                 setScanError(null);
-            }, 4000);
+            }, 2000);
         } catch (err: any) {
             console.error("[handleOrderScan] ERROR:", err);
             console.error("[handleOrderScan] Error message:", err?.message);
@@ -769,12 +783,13 @@ export const OrdersView: React.FC = () => {
             setScanError(errorMsg);
             setScanStatus('error');
             
-            // Keep error visible for 5 seconds
+            // Clear barcode for next scan - keep popup open
             setTimeout(() => {
+                setLastScannedBarcode('');
                 setScanStatus('idle');
                 setScannedOrder(null);
                 setScanError(null);
-            }, 5000);
+            }, 3000);
         }
     };
 
