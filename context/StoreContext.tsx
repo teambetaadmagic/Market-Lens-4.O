@@ -15,7 +15,6 @@ import {
   limit
 } from 'firebase/firestore';
 import { saveShopifyOrder, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, recordProductSupplierAssignment } from '../services/firestore';
-import { DEBUG } from '../utils/debug';
 
 interface ShopifyConfig {
   id: string;
@@ -98,7 +97,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   } catch (e) {
     DEBUG.error('STORE', 'Failed to initialize logging', e);
   }
-  
+
   const [data, setData] = useState<AppState>({
     suppliers: [],
     products: [],
@@ -186,11 +185,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const newConfig: ShopifyConfig = { ...config, id: generateId() };
       const newConfigs = [...shopifyConfigs, newConfig];
-      
+
       // Update local state
       setShopifyConfigs(newConfigs);
       localStorage.setItem('market-lens-shopify-configs', JSON.stringify(newConfigs));
-      
+
       // Save to Firestore database for global access
       const shopifyConfigRef = doc(db, 'shopifyConfigs', newConfig.id);
       await setDoc(shopifyConfigRef, {
@@ -200,7 +199,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createdAt: new Date(),
         updatedAt: new Date()
       });
-      
+
       console.log('[Shopify Config] Added to Firestore:', newConfig.id);
     } catch (error) {
       console.error('Failed to add Shopify config:', error);
@@ -213,18 +212,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newConfigs = shopifyConfigs.map(c =>
         c.id === id ? { ...c, ...updatedFields } : c
       );
-      
+
       // Update local state
       setShopifyConfigs(newConfigs);
       localStorage.setItem('market-lens-shopify-configs', JSON.stringify(newConfigs));
-      
+
       // Update in Firestore
       const shopifyConfigRef = doc(db, 'shopifyConfigs', id);
       await updateDoc(shopifyConfigRef, {
         ...updatedFields,
         updatedAt: new Date()
       });
-      
+
       console.log('[Shopify Config] Updated in Firestore:', id);
     } catch (error) {
       console.error('Failed to update Shopify config:', error);
@@ -235,15 +234,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteShopifyConfig = async (id: string) => {
     try {
       const newConfigs = shopifyConfigs.filter(c => c.id !== id);
-      
+
       // Update local state
       setShopifyConfigs(newConfigs);
       localStorage.setItem('market-lens-shopify-configs', JSON.stringify(newConfigs));
-      
+
       // Delete from Firestore
       const shopifyConfigRef = doc(db, 'shopifyConfigs', id);
       await deleteDoc(shopifyConfigRef);
-      
+
       console.log('[Shopify Config] Deleted from Firestore:', id);
     } catch (error) {
       console.error('Failed to delete Shopify config:', error);
@@ -260,7 +259,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getMostRecentSupplierForProduct = (productId: string): ProductSupplierHistory | null => {
     const histories = productSupplierHistory.filter(h => h.productId === productId);
     if (histories.length === 0) return null;
-    
+
     // Sort by assignmentCount descending
     return histories.sort((a, b) => b.assignmentCount - a.assignmentCount)[0];
   };
@@ -269,7 +268,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try {
       DEBUG.log('STORE', 'Initializing Firestore listeners...');
-      
+
       const handleError = (error: any) => {
         DEBUG.error('STORE', 'Firestore Listener Error', { code: error?.code, message: error?.message });
         if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
@@ -286,74 +285,68 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsInitialized(true);
       }, handleError);
 
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      const products = snapshot.docs.map(doc => doc.data() as ProductMaster);
-      console.log('[Products] Synced from Firestore:', products.length);
-      setData(prev => ({ ...prev, products }));
-    }, handleError);
+      const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+        const products = snapshot.docs.map(doc => doc.data() as ProductMaster);
+        console.log('[Products] Synced from Firestore:', products.length);
+        setData(prev => ({ ...prev, products }));
+      }, handleError);
 
-    const unsubLogs = onSnapshot(collection(db, 'dailyLogs'), (snapshot) => {
-      const dailyLogs = snapshot.docs.map(doc => doc.data() as DailyLog);
-      console.log('[DailyLogs] Synced from Firestore:', dailyLogs.length);
-      setData(prev => ({ ...prev, dailyLogs }));
-    }, handleError);
+      const unsubLogs = onSnapshot(collection(db, 'dailyLogs'), (snapshot) => {
+        const dailyLogs = snapshot.docs.map(doc => doc.data() as DailyLog);
+        console.log('[DailyLogs] Synced from Firestore:', dailyLogs.length);
+        setData(prev => ({ ...prev, dailyLogs }));
+      }, handleError);
 
-    // Subscribe to Shopify configs from Firestore
-    const unsubShopifyConfigs = onSnapshot(collection(db, 'shopifyConfigs'), (snapshot) => {
-      const configs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        accessToken: doc.data().accessToken,
-        shopifyDomain: doc.data().shopifyDomain,
-        shopName: doc.data().shopName
-      } as ShopifyConfig));
-      setShopifyConfigs(configs);
-      console.log('[Shopify Config] Loaded from Firestore:', configs.length, 'stores');
-    }, handleError);
+      // Subscribe to Shopify configs from Firestore
+      const unsubShopifyConfigs = onSnapshot(collection(db, 'shopifyConfigs'), (snapshot) => {
+        const configs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          accessToken: doc.data().accessToken,
+          shopifyDomain: doc.data().shopifyDomain,
+          shopName: doc.data().shopName
+        } as ShopifyConfig));
+        setShopifyConfigs(configs);
+        console.log('[Shopify Config] Loaded from Firestore:', configs.length, 'stores');
+      }, handleError);
 
-    // Subscribe to Shopify Orders from Firestore
-    const unsubShopifyOrders = onSnapshot(collection(db, 'shopifyOrders'), (snapshot) => {
-      const orders = snapshot.docs.map(doc => doc.data() as ShopifyOrder);
-      setShopifyOrders(orders);
-      setData(prev => ({ ...prev, shopifyOrders: orders }));
-      console.log('[Shopify Orders] Loaded from Firestore:', orders.length, 'orders');
-    }, handleError);
+      // Subscribe to Shopify Orders from Firestore
+      const unsubShopifyOrders = onSnapshot(collection(db, 'shopifyOrders'), (snapshot) => {
+        const orders = snapshot.docs.map(doc => doc.data() as ShopifyOrder);
+        setShopifyOrders(orders);
+        setData(prev => ({ ...prev, shopifyOrders: orders }));
+        console.log('[Shopify Orders] Loaded from Firestore:', orders.length, 'orders');
+      }, handleError);
 
-    // Subscribe to Purchase Orders from Firestore
-    const unsubPurchaseOrders = onSnapshot(collection(db, 'purchaseOrders'), (snapshot) => {
-      const pos = snapshot.docs.map(doc => doc.data() as PurchaseOrder);
-      setPurchaseOrders(pos);
-      setData(prev => ({ ...prev, purchaseOrders: pos }));
-      console.log('[Purchase Orders] Loaded from Firestore:', pos.length, 'orders');
-    }, handleError);
+      // Subscribe to Purchase Orders from Firestore
+      const unsubPurchaseOrders = onSnapshot(collection(db, 'purchaseOrders'), (snapshot) => {
+        const pos = snapshot.docs.map(doc => doc.data() as PurchaseOrder);
+        setPurchaseOrders(pos);
+        setData(prev => ({ ...prev, purchaseOrders: pos }));
+        console.log('[Purchase Orders] Loaded from Firestore:', pos.length, 'orders');
+      }, handleError);
 
-    // Subscribe to Product-Supplier History from Firestore
-    const unsubProductHistory = onSnapshot(collection(db, 'productSupplierHistory'), (snapshot) => {
-      const history = snapshot.docs.map(doc => doc.data() as ProductSupplierHistory);
-      setProductSupplierHistory(history);
-      console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
-    }, handleError);
+      // Subscribe to Product-Supplier History from Firestore
+      const unsubProductHistory = onSnapshot(collection(db, 'productSupplierHistory'), (snapshot) => {
+        const history = snapshot.docs.map(doc => doc.data() as ProductSupplierHistory);
+        setProductSupplierHistory(history);
+        console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
+      }, handleError);
 
-    // Set a timeout for initialization - if not initialized after 10 seconds, mark as initialized anyway
-    const initTimeout = setTimeout(() => {
-      console.warn('[StoreContext] Initialization timeout - marking as initialized after 10s');
-      setIsInitialized(true);
-    }, 10000);
-
-    return () => {
-      try {
-        clearTimeout(initTimeout);
-        unsubSuppliers();
-        unsubProducts();
-        unsubLogs();
-        unsubShopifyConfigs();
-        unsubShopifyOrders();
-        unsubPurchaseOrders();
-        unsubProductHistory();
-      } catch (e) {
-        console.error('[StoreContext] Failed to cleanup listeners:', e);
-      }
-    };
-  }, []);
+      return () => {
+        try {
+          clearTimeout(initTimeout);
+          unsubSuppliers();
+          unsubProducts();
+          unsubLogs();
+          unsubShopifyConfigs();
+          unsubShopifyOrders();
+          unsubPurchaseOrders();
+          unsubProductHistory();
+        } catch (e) {
+          console.error('[StoreContext] Failed to cleanup listeners:', e);
+        }
+      };
+    }, []);
 
   const findProductByHash = useCallback((hash: string) => {
     return data.products.find(p => p.imageHash === hash) || null;

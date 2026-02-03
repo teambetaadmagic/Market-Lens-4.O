@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-console.log('[Bootstrap] Starting app initialization...');
+console.log('%c[BOOTSTRAP] Starting app initialization...', 'color: #2563eb; font-weight: bold;');
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -19,11 +19,11 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-console.log('[Bootstrap] Root element found, creating React app...');
+console.log('%c[BOOTSTRAP] Root element found, creating React app...', 'color: #16a34a; font-weight: bold;');
 
 try {
   const root = ReactDOM.createRoot(rootElement);
-  console.log('[Bootstrap] React root created, rendering App...');
+  console.log('%c[BOOTSTRAP] React root created, rendering App...', 'color: #16a34a; font-weight: bold;');
   
   root.render(
     <React.StrictMode>
@@ -31,9 +31,9 @@ try {
     </React.StrictMode>
   );
   
-  console.log('[Bootstrap] App rendered successfully');
+  console.log('%c[BOOTSTRAP] App rendered successfully', 'color: #16a34a; font-weight: bold; font-size: 14px;');
 } catch (error) {
-  console.error('[Bootstrap] FATAL Error rendering app:', error);
+  console.error('%c[BOOTSTRAP] FATAL Error rendering app:', 'color: #dc2626; font-weight: bold;', error);
   document.body.innerHTML = `
     <div style="width:100%; height:100vh; display:flex; align-items:center; justify-content:center; background:#fee; color:#c33; font-family:monospace; padding:20px; overflow:auto;">
       <div style="max-width:500px;">
@@ -48,11 +48,11 @@ try {
 
 // Global error handler
 window.addEventListener('error', (event) => {
-  console.error('[Global Error Handler]', event.error);
+  console.error('%c[Global Error Handler]', 'color: #dc2626; font-weight: bold;', event.error);
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('[Unhandled Promise Rejection]', event.reason);
+  console.error('%c[Unhandled Promise Rejection]', 'color: #dc2626; font-weight: bold;', event.reason);
 });
 
-console.log('[Bootstrap] Bootstrap complete');
+console.log('%c[BOOTSTRAP] Bootstrap complete and ready for use', 'color: #2563eb; font-weight: bold; font-size: 14px;');
