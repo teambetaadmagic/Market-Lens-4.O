@@ -131,6 +131,17 @@ export interface PurchaseOrder {
   history: ActionHistory[];
 }
 
+export interface ProductSupplierHistory {
+  id: string; // unique id
+  productId: string; // product id
+  supplierId: string; // supplier id
+  supplierName: string; // supplier name
+  size?: string; // optional size/variant if available
+  lastAssignedAt: number; // timestamp of last assignment
+  assignmentCount: number; // total times this product assigned to this supplier
+  notes?: string;
+}
+
 export interface AppState {
   suppliers: Supplier[];
   products: ProductMaster[];

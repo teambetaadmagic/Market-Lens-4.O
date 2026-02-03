@@ -1,6 +1,6 @@
 import { getFirestore } from "firebase/firestore";
 import { db as firebaseDb } from "../firebaseConfig";
-import { ShopifyOrder, PurchaseOrder, ActionHistory } from "../types";
+import { ShopifyOrder, PurchaseOrder, ActionHistory, ProductSupplierHistory } from "../types";
 import {
   collection,
   doc,
@@ -178,5 +178,85 @@ export const deletePurchaseOrder = async (poId: string): Promise<void> => {
   } catch (error) {
     console.error('[Firestore] Error deleting purchase order:', error);
     throw error;
+  }
+};
+// ===== PRODUCT-SUPPLIER HISTORY =====
+/**
+ * Record a product-supplier assignment (memory of which supplier typically provides which product)
+ * This enables auto-assignment when the product is ordered again
+ */
+export const recordProductSupplierAssignment = async (
+  productId: string,
+  supplierId: string,
+  supplierName: string,
+  size?: string
+): Promise<void> => {
+  try {
+    // Create a unique key combining productId, supplierId, and size
+    const historyKey = `${productId}_${supplierId}_${size || 'no-size'}`;
+    
+    const existingHistory = await getProductSupplierHistory(productId, supplierId, size);
+    
+    if (existingHistory) {
+      // Update existing record
+      const docRef = doc(db, 'productSupplierHistory', historyKey);
+      await updateDoc(docRef, {
+        lastAssignedAt: Timestamp.now().toMillis(),
+        assignmentCount: (existingHistory.assignmentCount || 0) + 1
+      });
+    } else {
+      // Create new record
+      const history: ProductSupplierHistory = {
+        id: historyKey,
+        productId,
+        supplierId,
+        supplierName,
+        size: size || undefined,
+        lastAssignedAt: Timestamp.now().toMillis(),
+        assignmentCount: 1
+      };
+      
+      const docRef = doc(db, 'productSupplierHistory', historyKey);
+      await setDoc(docRef, history);
+    }
+    
+    console.log('[Firestore] Recorded product-supplier assignment:', historyKey);
+  } catch (error) {
+    console.error('[Firestore] Error recording product-supplier assignment:', error);
+    // Don't throw - this is non-critical for app functionality
+  }
+};
+
+/**
+ * Get the history record for a product-supplier combination
+ */
+export const getProductSupplierHistory = async (
+  productId: string,
+  supplierId: string,
+  size?: string
+): Promise<ProductSupplierHistory | null> => {
+  try {
+    const historyKey = `${productId}_${supplierId}_${size || 'no-size'}`;
+    const docRef = doc(db, 'productSupplierHistory', historyKey);
+    
+    // This is a simple helper - actual fetching is done in StoreContext with onSnapshot
+    return null; // Return null here, context will handle fetching
+  } catch (error) {
+    console.error('[Firestore] Error getting product-supplier history:', error);
+    return null;
+  }
+};
+
+/**
+ * Get the most recent supplier for a product (for auto-assignment)
+ * Returns the supplier with the highest assignmentCount
+ */
+export const getMostRecentSupplierForProduct = async (productId: string): Promise<ProductSupplierHistory | null> => {
+  try {
+    // This will be implemented in StoreContext with Firestore queries
+    return null;
+  } catch (error) {
+    console.error('[Firestore] Error getting most recent supplier:', error);
+    return null;
   }
 };

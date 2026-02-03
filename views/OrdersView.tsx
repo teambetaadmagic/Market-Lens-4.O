@@ -2,15 +2,15 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Search, Plus, Loader2, Save, Clock, Trash2, Image as ImageIcon, Layers, Minus, Plus as PlusIcon, Banknote, Phone, Send, Edit2, X, Copy, Share2, ChevronDown, ChevronUp, FileText, Check, MessageCircle, Calendar, Tag, Lock, GitMerge, AlertCircle, Info, ScanLine as Scan } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Html5QrcodeScanner, Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { DailyLog, PurchaseOrderItem } from '../types';
+import { DailyLog, PurchaseOrderItem, Supplier } from '../types';
 import { computeImageHash, compressImage } from '../services/geminiService';
 import { canEditView } from '../utils/permissions';
-import { saveShopifyOrder } from '../services/firestore';
+import { saveShopifyOrder, recordProductSupplierAssignment } from '../services/firestore';
 
 const QUICK_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL', '7XL', '8XL', '9XL', '10XL'];
 
 export const OrdersView: React.FC = () => {
-    const { suppliers, addOrUpdateDailyLog, findProductByHash, dailyLogs, products, getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder } = useStore();
+    const { suppliers, addOrUpdateDailyLog, findProductByHash, dailyLogs, products, getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder, getMostRecentSupplierForProduct } = useStore();
 
     // Check if user can edit this view
     const canEdit = user ? canEditView(user.role, 'orders') : false;
@@ -609,6 +609,7 @@ export const OrdersView: React.FC = () => {
                         // Prepare quantities with size/variant
                         const itemQtys: Record<string, number> = {};
                         const hasSizes = item.variant_title && item.variant_title !== 'Default Title';
+                        const itemSize = hasSizes ? item.variant_title : undefined;
                         
                         if (hasSizes) {
                             itemQtys[item.variant_title] = item.quantity;
@@ -618,13 +619,23 @@ export const OrdersView: React.FC = () => {
                             console.log(`[OrdersView] Added quantity: Total = ${item.quantity}`);
                         }
 
-                        // Save to daily logs - NO product name or price, just image and quantity/size
+                        // Check if this product has a supplier history for auto-assignment
+                        const productId = `shopify_${item.product_id || item.id}`;
+                        const supplierHistory = getMostRecentSupplierForProduct(productId);
+                        let autoAssignedSupplierName: string | undefined = undefined;
+                        
+                        if (supplierHistory && supplierHistory.supplierId !== 'unknown') {
+                            autoAssignedSupplierName = supplierHistory.supplierName;
+                            console.log(`[OrdersView] ✅ Auto-assigned to supplier: ${supplierHistory.supplierName}`);
+                        }
+
+                        // Save to daily logs - with auto-assigned supplier if available
                         await addOrUpdateDailyLog(
                             compressedBase64,
                             hash,
                             itemQtys,
                             hasSizes,
-                            undefined, // no supplier
+                            autoAssignedSupplierName, // auto-assigned supplier
                             `Item from order ${orderData.orderName}`, // generic description
                             undefined, // NO price
                             undefined // no supplier phone
@@ -2000,16 +2011,23 @@ export const OrdersView: React.FC = () => {
                                     totalQty={supplier.totalQty}
                                     logs={supplier.logs}
                                     products={products}
+                                    availableSuppliers={suppliers}
                                     onUpdateLogs={updateLogSupplier}
                                     onUpdateDetails={updateLogDetails}
                                     onUpdatePhone={async (phone) => {
-                                        if (supplier.id && supplier.id !== 'Unassigned') {
+                                        if (supplier.id && supplier.id !== 'unknown') {
                                             await updateSupplier(supplier.id, { name: supplier.name, phone });
                                         }
                                     }}
                                     onUpdateTag={async (tag) => {
-                                        if (supplier.id && supplier.id !== 'Unassigned') {
+                                        if (supplier.id && supplier.id !== 'unknown') {
                                             await updateSupplier(supplier.id, { name: supplier.name, tag });
+                                        }
+                                    }}
+                                    onAssignSupplier={async (selectedSupplierId: string) => {
+                                        // Update all unassigned logs to the selected supplier
+                                        for (const log of supplier.logs) {
+                                            await updateLogSupplier(log.id, suppliers.find(s => s.id === selectedSupplierId)?.name || 'Unknown');
                                         }
                                     }}
                                     onDeleteLog={deleteLog}
@@ -2034,6 +2052,69 @@ export const OrdersView: React.FC = () => {
                                     onMerge={handleMergeSelected}
                                 />
                             ))}
+                        </div>
+
+                        {/* SUPPLIER SUMMARY - Shows breakdown of products by supplier */}
+                        <div className="mt-8 pt-6 border-t border-gray-200">
+                            <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-3">Product Distribution</h3>
+                            <div className="grid grid-cols-2 gap-2 px-2">
+                                {groupedOrders[0]?.suppliers.map((supplier) => {
+                                    const totalItems = supplier.logs.reduce((sum, log) => 
+                                        sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0);
+                                    const uniqueProducts = new Set(supplier.logs.map(l => l.productId)).size;
+                                    
+                                    return (
+                                        <div 
+                                            key={supplier.id} 
+                                            className="bg-gradient-to-br from-blue-50 to-blue-50 border border-blue-200 rounded-lg p-3 hover:shadow-md transition"
+                                        >
+                                            <div className="text-sm font-bold text-gray-900 truncate">{supplier.name}</div>
+                                            <div className="flex gap-3 mt-2 text-xs">
+                                                <div className="flex flex-col">
+                                                    <span className="text-gray-500 font-medium">Items</span>
+                                                    <span className="text-lg font-bold text-blue-600">{totalItems}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-gray-500 font-medium">Products</span>
+                                                    <span className="text-lg font-bold text-blue-600">{uniqueProducts}</span>
+                                                </div>
+                                            </div>
+                                            {supplier.phone && (
+                                                <div className="mt-2 text-[10px] text-gray-600 truncate">📞 {supplier.phone}</div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                
+                                {/* Unassigned Summary */}
+                                {groupedOrders[0]?.suppliers.some(s => s.id === 'unknown') && (
+                                    <div 
+                                        className="bg-gradient-to-br from-amber-50 to-amber-50 border border-amber-200 rounded-lg p-3 hover:shadow-md transition"
+                                    >
+                                        <div className="text-sm font-bold text-gray-900">Unassigned</div>
+                                        <div className="flex gap-3 mt-2 text-xs">
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500 font-medium">Items</span>
+                                                <span className="text-lg font-bold text-amber-600">
+                                                    {groupedOrders[0]?.suppliers
+                                                        .find(s => s.id === 'unknown')?.logs
+                                                        .reduce((sum, log) => 
+                                                            sum + Object.values(log.orderedQty).reduce((a, b) => a + (Number(b) || 0), 0), 0) || 0}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-gray-500 font-medium">Products</span>
+                                                <span className="text-lg font-bold text-amber-600">
+                                                    {new Set(groupedOrders[0]?.suppliers
+                                                        .find(s => s.id === 'unknown')?.logs
+                                                        .map(l => l.productId) || []).size}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 text-[10px] text-amber-700 font-medium">⚠️ Needs assignment</div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )
@@ -2217,10 +2298,12 @@ const SupplierGroupCard: React.FC<{
     totalQty: number;
     logs: DailyLog[];
     products: any[];
+    availableSuppliers: Supplier[];
     onUpdateLogs: (logId: string, name: string) => void;
     onUpdateDetails: (logId: string, qty: Record<string, number>, price?: number) => void;
     onUpdatePhone: (phone: string) => Promise<void>;
     onUpdateTag: (tag: string) => Promise<void>;
+    onAssignSupplier: (supplierId: string) => Promise<void>;
     onDeleteLog: (logId: string) => void;
     onGeneratePO: () => void;
     onSendVendorPO: () => void;
@@ -2230,7 +2313,7 @@ const SupplierGroupCard: React.FC<{
     onSelectForMerge?: (logId: string, selected: boolean) => void;
     onShowHistory?: (log: DailyLog) => void;
     onMerge?: () => void;
-}> = ({ supplierName, supplierId, supplierPhone, supplierTag, totalAmount, totalQty, logs, products, onUpdateLogs, onUpdateDetails, onUpdatePhone, onUpdateTag, onDeleteLog, onGeneratePO, onSendVendorPO, canEdit, mergeMode, selectedForMerge, onSelectForMerge, onShowHistory, onMerge }) => {
+}> = ({ supplierName, supplierId, supplierPhone, supplierTag, totalAmount, totalQty, logs, products, availableSuppliers, onUpdateLogs, onUpdateDetails, onUpdatePhone, onUpdateTag, onAssignSupplier, onDeleteLog, onGeneratePO, onSendVendorPO, canEdit, mergeMode, selectedForMerge, onSelectForMerge, onShowHistory, onMerge }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     return (
@@ -2295,6 +2378,13 @@ const SupplierGroupCard: React.FC<{
                                     }}
                                     canEdit={canEdit}
                                     onShowHistory={(log) => onShowHistory?.(log)}
+                                    suppliers={suppliers}
+                                    onSupplierChange={(supplierId, supplierName) => {
+                                        updateLogSupplier(log.id, supplierName);
+                                        // Record the assignment in history for auto-assignment next time
+                                        recordProductSupplierAssignment(log.productId, supplierId, supplierName, 
+                                            log.hasSizes ? Object.keys(log.orderedQty)[0] : undefined);
+                                    }}
                                 />
                             </div>
                         );
@@ -2527,14 +2617,37 @@ const EditableSupplierHeader: React.FC<{
                     </div>
                 ) : (
                     <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-base text-gray-900">{supplierName}</span>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); if (canEdit) { setIsEditing(true); setNewName(supplierName); } }}
-                            disabled={!canEdit}
-                            className="text-gray-300 hover:text-blue-600 p-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <Edit2 size={12} />
-                        </button>
+                        {supplierId === 'unknown' ? (
+                            // Show dropdown for unassigned orders
+                            <select
+                                onChange={(e) => {
+                                    if (e.target.value && canEdit) {
+                                        onAssignSupplier(e.target.value);
+                                    }
+                                }}
+                                disabled={!canEdit}
+                                className="font-bold text-base px-2 py-1 border border-blue-300 rounded bg-white text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:border-blue-500 focus:border-blue-600 focus:outline-none"
+                                defaultValue=""
+                            >
+                                <option value="">Select a vendor...</option>
+                                {availableSuppliers.map(sup => (
+                                    <option key={sup.id} value={sup.id}>
+                                        {sup.name}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <>
+                                <span className="font-bold text-base text-gray-900">{supplierName}</span>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); if (canEdit) { setIsEditing(true); setNewName(supplierName); } }}
+                                    disabled={!canEdit}
+                                    className="text-gray-300 hover:text-blue-600 p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    <Edit2 size={12} />
+                                </button>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -2659,7 +2772,9 @@ const EditableLogItem: React.FC<{
     onDelete: () => void;
     canEdit: boolean;
     onShowHistory: (log: DailyLog) => void;
-}> = ({ log, product, supplierName, onUpdate, onDelete, canEdit, onShowHistory }) => {
+    suppliers: Supplier[];
+    onSupplierChange: (supplierId: string, supplierName: string) => void;
+}> = ({ log, product, supplierName, onUpdate, onDelete, canEdit, onShowHistory, suppliers, onSupplierChange }) => {
     const { setPreviewImage } = useStore();
     const [isEditing, setIsEditing] = useState(false);
 
@@ -2907,6 +3022,30 @@ const EditableLogItem: React.FC<{
                             <Edit2 size={12} />
                         </button>
                     </div>
+                </div>
+
+                {/* Supplier Selector Dropdown */}
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                    <select
+                        value={log.supplierId || 'unknown'}
+                        onChange={(e) => {
+                            if (e.target.value && e.target.value !== 'unknown' && canEdit) {
+                                const selectedSupplier = suppliers.find(s => s.id === e.target.value);
+                                if (selectedSupplier) {
+                                    onSupplierChange(e.target.value, selectedSupplier.name);
+                                }
+                            }
+                        }}
+                        disabled={!canEdit}
+                        className="w-full px-2 py-1.5 text-xs border border-blue-200 rounded-lg bg-white text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed hover:border-blue-400 focus:border-blue-500 focus:outline-none transition"
+                    >
+                        <option value="unknown">Assign to supplier...</option>
+                        {suppliers.map(sup => (
+                            <option key={sup.id} value={sup.id}>
+                                {sup.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
             </div>
         </div>

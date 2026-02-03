@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { AppState, DailyLog, ProductMaster, Supplier, PreviewMetadata, User, UserRole, ShopifyOrder, PurchaseOrder } from '../types';
+import { AppState, DailyLog, ProductMaster, Supplier, PreviewMetadata, User, UserRole, ShopifyOrder, PurchaseOrder, ProductSupplierHistory } from '../types';
 import { db } from '../firebaseConfig';
 import {
   collection,
@@ -8,9 +8,13 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
-  deleteDoc
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit
 } from 'firebase/firestore';
-import { saveShopifyOrder, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder } from '../services/firestore';
+import { saveShopifyOrder, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, recordProductSupplierAssignment } from '../services/firestore';
 
 interface ShopifyConfig {
   id: string;
@@ -69,6 +73,7 @@ interface StoreContextType extends AppState {
   findProductByHash: (hash: string) => ProductMaster | null;
   mergeLogsManual: (sourceLogId: string, targetLogId: string) => Promise<void>;
   fetchShopifyOrder: (orderName: string) => Promise<any>;
+  getMostRecentSupplierForProduct: (productId: string) => ProductSupplierHistory | null;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -112,6 +117,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [productSupplierHistory, setProductSupplierHistory] = useState<ProductSupplierHistory[]>([]);
 
   // Mock user database
   const USERS: Record<string, { password: string; role: UserRole }> = {
@@ -235,6 +241,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const getTodayDate = () => new Date().toISOString().split('T')[0];
 
+  /**
+   * Get the most frequently assigned supplier for a product
+   * Returns the supplier with highest assignmentCount
+   */
+  const getMostRecentSupplierForProduct = (productId: string): ProductSupplierHistory | null => {
+    const histories = productSupplierHistory.filter(h => h.productId === productId);
+    if (histories.length === 0) return null;
+    
+    // Sort by assignmentCount descending
+    return histories.sort((a, b) => b.assignmentCount - a.assignmentCount)[0];
+  };
+
   // 1. Subscribe to Firestore Collections
   useEffect(() => {
     console.log('[StoreContext] Initializing Firestore listeners...');
@@ -293,6 +311,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log('[Purchase Orders] Loaded from Firestore:', pos.length, 'orders');
     }, handleError);
 
+    // Subscribe to Product-Supplier History from Firestore
+    const unsubProductHistory = onSnapshot(collection(db, 'productSupplierHistory'), (snapshot) => {
+      const history = snapshot.docs.map(doc => doc.data() as ProductSupplierHistory);
+      setProductSupplierHistory(history);
+      console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
+    }, handleError);
+
     return () => {
       unsubSuppliers();
       unsubProducts();
@@ -300,6 +325,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       unsubShopifyConfigs();
       unsubShopifyOrders();
       unsubPurchaseOrders();
+      unsubProductHistory();
     };
   }, []);
 
@@ -991,7 +1017,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       getTodayDate,
       findProductByHash,
       mergeLogsManual,
-      fetchShopifyOrder
+      fetchShopifyOrder,
+      getMostRecentSupplierForProduct
     }}>
       {children}
     </StoreContext.Provider>
