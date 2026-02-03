@@ -2570,7 +2570,7 @@ const EditableSupplierHeader: React.FC<{
                                     }
                                 }}
                                 disabled={!canEdit}
-                                className="font-bold text-base px-2 py-1 border border-blue-300 rounded bg-white text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:border-blue-500 focus:border-blue-600 focus:outline-none"
+                                className="font-bold text-sm px-2 py-1 border border-blue-300 rounded bg-white text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:border-blue-500 focus:border-blue-600 focus:outline-none"
                                 defaultValue=""
                             >
                                 <option value="">Select a vendor...</option>
