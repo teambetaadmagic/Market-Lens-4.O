@@ -39,17 +39,30 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
     }, [dailyLogs, today]);
 
     // Active items for pickup (ALL pending orders)
-    const activeLogs = dailyLogs.filter(l =>
-        l.status === 'ordered' || l.status === 'picked_partial' || l.status === 'picked_full'
-    ).sort((a, b) => {
+    // Exclude items where all quantities have been fully dispatched
+    const activeLogs = dailyLogs.filter(l => {
+        // Only include items with these statuses
+        if (!['ordered', 'picked_partial', 'picked_full'].includes(l.status)) {
+            return false;
+        }
+
+        // Calculate remaining quantity (ordered - dispatched)
+        const orderedTotal = (Object.values(l.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        const dispatchedTotal = (Object.values(l.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        const remaining = orderedTotal - dispatchedTotal;
+
+        // Only show items that have remaining quantity
+        return remaining > 0;
+    }).sort((a, b) => {
         // Sort by date desc (newest first)
         return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
 
+
     const totalPendingQty = activeLogs.reduce((acc: number, log) => {
         const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-        const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-        return acc + Math.max(0, ord - picked);
+        const dispatched: number = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        return acc + Math.max(0, ord - dispatched);
     }, 0);
 
     // Group by Supplier only (no date grouping)
@@ -70,8 +83,8 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
             const firstLog = logs[0];
             const totalPending = logs.reduce((acc, log) => {
                 const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-                const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-                return acc + Math.max(0, ord - picked);
+                const dispatched: number = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+                return acc + Math.max(0, ord - dispatched);
             }, 0);
 
             return {
