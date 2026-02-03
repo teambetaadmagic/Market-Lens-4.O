@@ -30,7 +30,7 @@ export const App: React.FC = () => {
   );
 };
 ```
-
+ 
 **After:**
 ```tsx
 import PWAInstallPrompt from './components/PWAInstallPrompt';
