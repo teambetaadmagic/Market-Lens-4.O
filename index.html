@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Smart market intelligence platform for suppliers and warehouse management" />
+
+  <!-- PWA Meta Tags -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MarketLens" />
+
+  <!-- Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+  <link rel="shortcut icon" href="/icons/favicon.ico" />
+
+  <!-- Apple Touch Icon -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180x180.png" />
+
+  <!-- Android Chrome Icon -->
+  <link rel="android-chrome-icon" href="/icons/icon-192x192.png" />
+
+  <!-- Preconnect to external resources -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+  <link rel="dns-prefetch" href="https://www.gstatic.com" />
+
+  <title>MarketLens AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* APP-LIKE BEHAVIOR overrides */
+    html,
+    body {
+      overscroll-behavior-y: none;
+      /* Prevent browser pull-to-refresh */
+      touch-action: manipulation;
+      /* Faster click response */
+      -webkit-tap-highlight-color: transparent;
+      /* Remove blue tap box on Android/iOS */
+      height: 100%;
+      overflow: hidden;
+      /* Prevent body scroll, let React app handle it */
+    }
+
+    body {
+      user-select: none;
+      /* Feel like an app, not a website */
+      -webkit-user-select: none;
+    }
+
+    /* Re-enable text selection for inputs and specific content areas if needed */
+    input,
+    textarea,
+    .selectable-text {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* Custom scrollbar hide for clean mobile look */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Hide default number input spinners */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+
+    /* Native-like input focus transition */
+    input,
+    textarea,
+    button {
+      transition: all 0.2s ease-out;
+    }
+
+    /* Scanning Animation */
+    @keyframes scan {
+      0% {
+        top: 0;
+      }
+
+      50% {
+        top: 100%;
+      }
+
+      100% {
+        top: 0;
+      }
+    }
+
+    .scanning-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(239, 68, 68, 0.7);
+      box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.5);
+      z-index: 10;
+      animation: scan 2s infinite ease-in-out;
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "firebase/": "https://esm.sh/firebase@^12.8.0/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "html5-qrcode": "https://esm.sh/html5-qrcode"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body class="bg-gray-100 text-gray-900 antialiased selection:bg-blue-100 selection:text-blue-900">
+  <div id="root" class="h-full w-full"></div>
+  <script type="module" src="./index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(registration => {
+            console.log('Service Worker registered successfully');
+            
+            // Check for updates periodically
+            setInterval(() => {
+              registration.update();
+            }, 60000);
+            
+            // Listen for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('New app version available');
+                  window.dispatchEvent(new CustomEvent('serviceWorkerUpdate'));
+                }
+              });
+            });
+          })
+          .catch(error => {
+            console.error('Service Worker registration failed:', error);
+          });
+      });
+    }
+    
+    // Handle install prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPrompt = e;
+      window.dispatchEvent(new CustomEvent('pwaInstallReady'));
+    });
+    
+    window.addEventListener('appinstalled', () => {
+      console.log('PWA was installed');
+      deferredPrompt = null;
+      window.dispatchEvent(new CustomEvent('pwaInstalled'));
+    });
+  </script>
+</body>
+
+</html>

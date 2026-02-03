@@ -1,0 +1,7 @@
+{
+  "name": "Market Lens 2.0",
+  "description": "Smart purchase management app for market procurement using image-based product identification and WhatsApp integration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
