@@ -28,6 +28,7 @@ interface StoreContextType extends AppState {
   user: User | null;
   isLoading: boolean;
   loginError: string | null;
+  isInitialized: boolean;
   login: (username: string, password: string) => void;
   logout: () => void;
 
@@ -107,6 +108,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<any>(null);
   const [previewImage, setPreviewImageState] = useState<string | null>(null);
   const [previewMeta, setPreviewMeta] = useState<PreviewMetadata | null>(null);
@@ -269,6 +271,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log('[Suppliers] Synced from Firestore:', suppliers.length);
       setData(prev => ({ ...prev, suppliers }));
       setInitError(null);
+      setIsInitialized(true);
     }, handleError);
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -983,6 +986,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       user,
       isLoading,
       loginError,
+      isInitialized,
       login,
       logout,
 

@@ -134,16 +134,34 @@ const RulesGuide: React.FC = () => {
 
 const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState('orders');
-  const { user, login, isLoading, loginError, initError, previewImage, previewMeta, setPreviewImage } = useStore();
+  const { user, login, isLoading, loginError, initError, isInitialized, previewImage, previewMeta, setPreviewImage } = useStore();
+
+  // Show loading screen while Firebase is initializing
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-gray-100 p-8 text-center">
+          <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="animate-spin w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Loading</h2>
+          <p className="text-gray-600 text-sm">Initializing application...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show login if not authenticated
   if (!user) {
     return <LoginPage onLogin={login} isLoading={isLoading} error={loginError} />;
   }
 
+  // Handle initialization errors
   if (initError) {
       if (initError.code === 'permission-denied') return <RulesGuide />;
       if (initError.code === 'unavailable') return <OfflineGuide />;
+      // For any other errors, still show the app but log the error
+      console.warn('Init error:', initError);
   }
 
   const renderView = () => {
