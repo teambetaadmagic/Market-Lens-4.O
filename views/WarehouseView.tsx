@@ -5,7 +5,8 @@ import { Edit2, Clock, CheckCircle2, Truck, AlertCircle, History, Minus, Plus, C
 import { canEditView } from '../utils/permissions';
 
 export const WarehouseView: React.FC = () => {
-  const { dailyLogs, products, suppliers, processReceiving, updateLogSupplier, deleteLog, setPreviewImage, user } = useStore();
+  const storeData = useStore();
+  const { dailyLogs = [], products = [], suppliers = [], processReceiving, updateLogSupplier, deleteLog, setPreviewImage, user } = storeData;
   
     // Check if user can edit this view
     // Explicitly disallow market persons from editing inward even if permission util returns true

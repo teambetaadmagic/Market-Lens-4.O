@@ -10,7 +10,8 @@ import { saveShopifyOrder, recordProductSupplierAssignment } from '../services/f
 const QUICK_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL', '7XL', '8XL', '9XL', '10XL'];
 
 export const OrdersView: React.FC = () => {
-    const { suppliers, addOrUpdateDailyLog, findProductByHash, dailyLogs, products, getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder, getMostRecentSupplierForProduct } = useStore();
+    const storeData = useStore();
+    const { suppliers = [], addOrUpdateDailyLog, findProductByHash, dailyLogs = [], products = [], getTodayDate, updateSupplier, updateLogSupplier, updateLogDetails, deleteLog, setPreviewImage, user, mergeLogsManual, fetchShopifyOrder, savePurchaseOrder, getMostRecentSupplierForProduct } = storeData;
 
     // Check if user can edit this view
     const canEdit = user ? canEditView(user.role, 'orders') : false;

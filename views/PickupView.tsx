@@ -10,7 +10,8 @@ interface PickupViewProps {
 }
 
 export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
-    const { dailyLogs, products, suppliers, processPickup, deleteLog, getTodayDate, setPreviewImage, user, updateLogSupplier } = useStore();
+    const storeData = useStore();
+    const { dailyLogs = [], products = [], suppliers = [], processPickup, deleteLog, getTodayDate, setPreviewImage, user, updateLogSupplier } = storeData;
   const today = getTodayDate();
   
   // Check if user can edit this view

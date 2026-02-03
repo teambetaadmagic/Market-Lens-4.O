@@ -4,7 +4,8 @@ import { Phone, UserPlus, Search, Edit2, Check, X, Tag } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 export const SuppliersView: React.FC = () => {
-  const { suppliers, addSupplier, updateSupplier } = useStore();
+  const storeData = useStore();
+  const { suppliers = [], addSupplier, updateSupplier } = storeData;
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');

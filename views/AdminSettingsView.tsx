@@ -9,7 +9,8 @@ interface ValidationResult {
 }
 
 export const AdminSettingsView: React.FC = () => {
-  const { shopifyConfigs, addShopifyConfig, deleteShopifyConfig } = useStore();
+  const storeData = useStore();
+  const { shopifyConfigs = [], addShopifyConfig, deleteShopifyConfig } = storeData;
   const [newStore, setNewStore] = useState({
     accessToken: '',
     shopifyDomain: '',
