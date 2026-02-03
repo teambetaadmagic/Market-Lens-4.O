@@ -31,10 +31,9 @@ export default async function handler(req, res) {
         const fullDomain = `${cleanDomain}.myshopify.com`;
 
         // 1. Find the order by name
-        // Shopify order names usually include the prefix, e.g., "#1001"
-        const fetchOrder = async (name) => {
-            const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?name=${encodeURIComponent(name)}&status=any`;
-            console.log('[Shopify Order API] Searching for order:', name, 'at', fullDomain);
+        const fetchOrder = async (searchParams) => {
+            const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?${searchParams}&status=any`;
+            console.log('[Shopify Order API] Searching with params:', searchParams, 'at', fullDomain);
             const res = await fetch(searchUrl, {
                 method: 'GET',
                 headers: {
@@ -47,20 +46,27 @@ export default async function handler(req, res) {
             return (data.orders && data.orders.length > 0) ? data.orders[0] : null;
         };
 
-        let order = await fetchOrder(orderName);
+        // 1. Try exact name match
+        let order = await fetchOrder(`name=${encodeURIComponent(orderName)}`);
 
-        // Retry logic: If not found, try adding/removing '#'
+        // 2. Retry variations: If not found, try adding/removing '#'
         if (!order) {
             console.log('[Shopify Order API] Order not found with exact name. Retrying variations...');
             if (orderName.startsWith('#')) {
                 // Try without '#'
                 const cleanName = orderName.substring(1);
-                order = await fetchOrder(cleanName);
+                order = await fetchOrder(`name=${encodeURIComponent(cleanName)}`);
             } else {
                 // Try with '#'
                 const hashName = `#${orderName}`;
-                order = await fetchOrder(hashName);
+                order = await fetchOrder(`name=${encodeURIComponent(hashName)}`);
             }
+        }
+
+        // 3. Fallback: Loose search using 'query' parameter
+        if (!order) {
+            console.log('[Shopify Order API] Order not found with name variations. Trying loose search...');
+            order = await fetchOrder(`query=${encodeURIComponent(orderName)}`);
         }
 
         if (!order) {
