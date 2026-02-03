@@ -85,6 +85,9 @@ const generateId = () => {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  console.log('=== STORE PROVIDER INITIALIZING ===');
+  console.log('Firebase db instance:', db ? 'AVAILABLE' : 'MISSING');
+  
   const [data, setData] = useState<AppState>({
     suppliers: [],
     products: [],
@@ -234,8 +237,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 1. Subscribe to Firestore Collections
   useEffect(() => {
+    console.log('[StoreContext] Initializing Firestore listeners...');
+    
     const handleError = (error: any) => {
-      console.error("Firestore Listener Error:", error);
+      console.error("[Firestore Listener Error]:", error?.code, error?.message);
       if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
         setInitError(error);
       }
@@ -243,17 +248,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
       const suppliers = snapshot.docs.map(doc => doc.data() as Supplier);
+      console.log('[Suppliers] Synced from Firestore:', suppliers.length);
       setData(prev => ({ ...prev, suppliers }));
       setInitError(null);
     }, handleError);
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       const products = snapshot.docs.map(doc => doc.data() as ProductMaster);
+      console.log('[Products] Synced from Firestore:', products.length);
       setData(prev => ({ ...prev, products }));
     }, handleError);
 
     const unsubLogs = onSnapshot(collection(db, 'dailyLogs'), (snapshot) => {
       const dailyLogs = snapshot.docs.map(doc => doc.data() as DailyLog);
+      console.log('[DailyLogs] Synced from Firestore:', dailyLogs.length);
       setData(prev => ({ ...prev, dailyLogs }));
     }, handleError);
 
@@ -311,6 +319,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     supplierPhone?: string
   ): Promise<void> => {
     try {
+      console.log('[addOrUpdateDailyLog] Starting to save log...', { description, quantities });
       const batch = writeBatch(db);
       const today = getTodayDate();
       let supplierId: string | null = null;
@@ -426,10 +435,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         batch.set(logRef, newLog);
       }
 
+      console.log('[addOrUpdateDailyLog] Committing batch to Firestore...');
       await batch.commit();
+      console.log('[addOrUpdateDailyLog] ✅ Successfully saved to Firestore!');
 
-    } catch (e) {
-      console.error("Transaction failed details: ", e);
+    } catch (e: any) {
+      console.error('❌ [addOrUpdateDailyLog] FAILED:', {
+        errorCode: e?.code,
+        errorMessage: e?.message,
+        fullError: e
+      });
       throw e;
     }
   };

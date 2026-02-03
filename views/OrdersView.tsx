@@ -257,6 +257,7 @@ export const OrdersView: React.FC = () => {
     };
 
     const handleSave = async () => {
+        console.log('[handleSave] Starting save process...');
         if (!draftImage || isSaving) return;
 
         const cleanQuantities: Record<string, number> = {};
@@ -286,6 +287,7 @@ export const OrdersView: React.FC = () => {
         try {
             setIsSaving(true);
             const priceVal = price ? parseFloat(price) : undefined;
+            console.log('[handleSave] Calling addOrUpdateDailyLog with:', { description, quantities: cleanQuantities, supplierInput });
             await addOrUpdateDailyLog(
                 draftImage,
                 draftHash,
@@ -296,6 +298,7 @@ export const OrdersView: React.FC = () => {
                 priceVal,
                 supplierPhone || undefined
             );
+            console.log('[handleSave] Successfully saved!');
 
             if (pendingFiles.length > 0) {
                 const nextFile = pendingFiles[0];
