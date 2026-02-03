@@ -6,322 +6,322 @@ import { compressImage } from '../services/geminiService';
 import { canEditView } from '../utils/permissions';
 
 interface PickupViewProps {
-  setView?: (view: string) => void;
+    setView?: (view: string) => void;
 }
 
 export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
     const storeData = useStore();
     const { dailyLogs = [], products = [], suppliers = [], processPickup, deleteLog, getTodayDate, setPreviewImage, user, updateLogSupplier } = storeData;
-  const today = getTodayDate();
-  
-  // Check if user can edit this view
-  const canEdit = user ? canEditView(user.role, 'pickup') : false;
-  const isAdmin = user?.role === 'admin';
-  const [isClearingHistory, setIsClearingHistory] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-  
-  // Calculate Progress (Today Only for the graph)
-  const { totalOrdered, totalPicked, progress } = useMemo(() => {
-    const todayLogs = dailyLogs.filter(l => l.date === today);
-    let ord = 0;
-    let pck = 0;
-    
-    todayLogs.forEach(log => {
-       const ordValues = Object.values(log.orderedQty || {});
-       ordValues.forEach((v: any) => ord += (Number(v) || 0));
-       
-       const pickValues = Object.values(log.pickedQty || {});
-       pickValues.forEach((v: any) => pck += (Number(v) || 0));
+    const today = getTodayDate();
+
+    // Check if user can edit this view
+    const canEdit = user ? canEditView(user.role, 'pickup') : false;
+    const isAdmin = user?.role === 'admin';
+    const [isClearingHistory, setIsClearingHistory] = useState(false);
+    const [historyPage, setHistoryPage] = useState(1);
+
+    // Calculate Progress (Today Only for the graph)
+    const { totalOrdered, totalPicked, progress } = useMemo(() => {
+        const todayLogs = dailyLogs.filter(l => l.date === today);
+        let ord = 0;
+        let pck = 0;
+
+        todayLogs.forEach(log => {
+            const ordValues = Object.values(log.orderedQty || {});
+            ordValues.forEach((v: any) => ord += (Number(v) || 0));
+
+            const pickValues = Object.values(log.pickedQty || {});
+            pickValues.forEach((v: any) => pck += (Number(v) || 0));
+        });
+
+        const pct = ord > 0 ? Math.min(100, Math.round((pck / ord) * 100)) : 0;
+        return { totalOrdered: ord, totalPicked: pck, progress: pct };
+    }, [dailyLogs, today]);
+
+    // Active items for pickup (ALL pending orders)
+    const activeLogs = dailyLogs.filter(l =>
+        l.status === 'ordered' || l.status === 'picked_partial' || l.status === 'picked_full'
+    ).sort((a, b) => {
+        // Sort by date desc (newest first)
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-    
-    const pct = ord > 0 ? Math.min(100, Math.round((pck / ord) * 100)) : 0;
-    return { totalOrdered: ord, totalPicked: pck, progress: pct };
-  }, [dailyLogs, today]);
 
-  // Active items for pickup (ALL pending orders)
-  const activeLogs = dailyLogs.filter(l => 
-      l.status === 'ordered' || l.status === 'picked_partial' || l.status === 'picked_full'
-  ).sort((a, b) => {
-      // Sort by date desc (newest first)
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-  });
+    const totalPendingQty = activeLogs.reduce((acc: number, log) => {
+        const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        return acc + Math.max(0, ord - picked);
+    }, 0);
 
-  const totalPendingQty = activeLogs.reduce((acc: number, log) => {
-      const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-      const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-      return acc + Math.max(0, ord - picked);
-  }, 0);
+    // Group by Supplier only (no date grouping)
+    const groupedBySupplier = useMemo(() => {
+        const supplierMap: Record<string, DailyLog[]> = {};
 
-  // Group by Supplier only (no date grouping)
-  const groupedBySupplier = useMemo(() => {
-      const supplierMap: Record<string, DailyLog[]> = {};
+        activeLogs.forEach(log => {
+            let supName = 'Unassigned';
+            if (log.supplierId) {
+                const s = suppliers.find(sup => sup.id === log.supplierId);
+                if (s) supName = s.name;
+            }
+            if (!supplierMap[supName]) supplierMap[supName] = [];
+            supplierMap[supName].push(log);
+        });
 
-      activeLogs.forEach(log => {
-          let supName = 'Unassigned';
-          if (log.supplierId) {
-              const s = suppliers.find(sup => sup.id === log.supplierId);
-              if (s) supName = s.name;
-          }
-          if (!supplierMap[supName]) supplierMap[supName] = [];
-          supplierMap[supName].push(log);
-      });
+        const supplierGroups = Object.entries(supplierMap).map(([supName, logs]) => {
+            const firstLog = logs[0];
+            const totalPending = logs.reduce((acc, log) => {
+                const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+                const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+                return acc + Math.max(0, ord - picked);
+            }, 0);
 
-      const supplierGroups = Object.entries(supplierMap).map(([supName, logs]) => {
-          const firstLog = logs[0];
-          const totalPending = logs.reduce((acc, log) => {
-              const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-              const picked: number = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-              return acc + Math.max(0, ord - picked);
-          }, 0);
+            return {
+                name: supName,
+                id: firstLog.supplierId || 'unknown',
+                logs: logs,
+                totalPendingQty: totalPending
+            };
+        });
 
-          return {
-              name: supName,
-              id: firstLog.supplierId || 'unknown',
-              logs: logs,
-              totalPendingQty: totalPending
-          };
-      });
+        return supplierGroups.sort((a, b) => b.totalPendingQty - a.totalPendingQty);
+    }, [activeLogs, suppliers]);
 
-      return supplierGroups.sort((a, b) => b.totalPendingQty - a.totalPendingQty);
-  }, [activeLogs, suppliers]);
+    // Dispatch History
+    const historyLogs = useMemo(() => {
+        return dailyLogs.filter(l =>
+            ['dispatched', 'received_partial', 'received_full'].includes(l.status)
+        ).sort((a, b) => {
+            // Find dispatch timestamp
+            const getDispatchTime = (log: DailyLog) => {
+                const entry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
+                return entry ? entry.timestamp : 0;
+            };
+            return getDispatchTime(b) - getDispatchTime(a);
+        }).slice(0, 30);
+    }, [dailyLogs]);
 
-  // Dispatch History
-  const historyLogs = useMemo(() => {
-      return dailyLogs.filter(l => 
-          ['dispatched', 'received_partial', 'received_full'].includes(l.status)
-      ).sort((a, b) => {
-          // Find dispatch timestamp
-          const getDispatchTime = (log: DailyLog) => {
-              const entry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
-              return entry ? entry.timestamp : 0;
-          };
-          return getDispatchTime(b) - getDispatchTime(a);
-      }).slice(0, 30);
-  }, [dailyLogs]);
+    const handleClearHistory = async () => {
+        if (!isAdmin) {
+            alert('You do not have permission to clear history');
+            return;
+        }
 
-  const handleClearHistory = async () => {
-    if (!isAdmin) {
-      alert('You do not have permission to clear history');
-      return;
-    }
+        const confirmed = window.confirm(`Are you sure you want to delete all ${historyLogs.length} recent dispatches? This action cannot be undone.`);
+        if (!confirmed) return;
 
-    const confirmed = window.confirm(`Are you sure you want to delete all ${historyLogs.length} recent dispatches? This action cannot be undone.`);
-    if (!confirmed) return;
+        setIsClearingHistory(true);
+        try {
+            for (const log of historyLogs) {
+                await deleteLog(log.id);
+            }
+            alert('History cleared successfully');
+        } catch (error: any) {
+            console.error('Error clearing history:', error);
+            alert(`Error clearing history: ${error?.message || error}`);
+        } finally {
+            setIsClearingHistory(false);
+        }
+    };
 
-    setIsClearingHistory(true);
-    try {
-      for (const log of historyLogs) {
-        await deleteLog(log.id);
-      }
-      alert('History cleared successfully');
-    } catch (error: any) {
-      console.error('Error clearing history:', error);
-      alert(`Error clearing history: ${error?.message || error}`);
-    } finally {
-      setIsClearingHistory(false);
-    }
-  };
+    return (
+        <div className="pb-36 pt-0 px-3 max-w-lg mx-auto min-h-screen relative">
+            {/* Read-Only Banner */}
+            {!canEdit && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-center gap-2">
+                    <Lock size={18} className="text-amber-600 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-amber-800">Read-only mode: You can view but cannot process pickups</p>
+                </div>
+            )}
 
-  return (
-    <div className="pb-36 pt-0 px-3 max-w-lg mx-auto min-h-screen relative">
-       {/* Read-Only Banner */}
-       {!canEdit && (
-         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-center gap-2">
-           <Lock size={18} className="text-amber-600 flex-shrink-0" />
-           <p className="text-xs font-semibold text-amber-800">Read-only mode: You can view but cannot process pickups</p>
-         </div>
-       )}
-       
-       {/* Sticky Header */}
-       <div className="flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
-           <h1 className="text-xl font-bold text-gray-900 tracking-tight">Pickup List</h1>
-           {activeLogs.length > 0 && (
-               <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
-                   {totalPendingQty} Qty Pending
-               </span>
-           )}
-       </div>
+            {/* Sticky Header */}
+            <div className="flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
+                <h1 className="text-xl font-bold text-gray-900 tracking-tight">Pickup List</h1>
+                {activeLogs.length > 0 && (
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
+                        {totalPendingQty} Qty Pending
+                    </span>
+                )}
+            </div>
 
-       {/* Progress Card (Today) */}
-       {totalOrdered > 0 && (
-           <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-6 animate-in slide-in-from-top-2">
-              <div className="flex justify-between items-center mb-3">
-                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <TrendingUp size={18} />
+            {/* Progress Card (Today) */}
+            {totalOrdered > 0 && (
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-6 animate-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center mb-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                                <TrendingUp size={18} />
+                            </div>
+                            <div>
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Today's Progress</div>
+                                <div className="text-xl font-bold text-gray-900 leading-none">{progress}% Done</div>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                {totalPicked} / {totalOrdered}
+                            </span>
+                        </div>
                     </div>
-                    <div>
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Today's Progress</div>
-                        <div className="text-xl font-bold text-gray-900 leading-none">{progress}% Done</div>
+
+                    <div className="relative w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div
+                            className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out ${progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`}
+                            style={{ width: `${progress}%` }}
+                        ></div>
+                        <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] opacity-30"></div>
                     </div>
-                 </div>
-                 <div className="text-right">
-                     <span className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                        {totalPicked} / {totalOrdered}
-                     </span>
-                 </div>
-              </div>
-              
-              <div className="relative w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                 <div 
-                    className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out ${progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`}
-                    style={{ width: `${progress}%` }}
-                 ></div>
-                 <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] opacity-30"></div>
-              </div>
-           </div>
-       )}
+                </div>
+            )}
 
-       {groupedBySupplier.length === 0 && historyLogs.length === 0 && (
-           <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
-               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                   <Check size={32} className="text-gray-300" />
-               </div>
-               <p className="font-medium">All caught up!</p>
-               <p className="text-xs mt-1">No pending orders.</p>
-           </div>
-       )}
+            {groupedBySupplier.length === 0 && historyLogs.length === 0 && (
+                <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                        <Check size={32} className="text-gray-300" />
+                    </div>
+                    <p className="font-medium">All caught up!</p>
+                    <p className="text-xs mt-1">No pending orders.</p>
+                </div>
+            )}
 
-       {/* Suppliers List (No Date Grouping) */}
-       {groupedBySupplier.map((supplierGroup) => (
-           <SupplierGroup 
-               key={supplierGroup.id}
-               supplierId={supplierGroup.id}
-               supplierName={supplierGroup.name}
-               logs={supplierGroup.logs}
-               products={products}
-               suppliers={suppliers}
-               onPickup={processPickup}
-               onDelete={deleteLog}
-               canEdit={canEdit}
-               isAdmin={user?.role === 'admin'}
-           />
-       ))}
+            {/* Suppliers List (No Date Grouping) */}
+            {groupedBySupplier.map((supplierGroup) => (
+                <SupplierGroup
+                    key={supplierGroup.id}
+                    supplierId={supplierGroup.id}
+                    supplierName={supplierGroup.name}
+                    logs={supplierGroup.logs}
+                    products={products}
+                    suppliers={suppliers}
+                    onPickup={processPickup}
+                    onDelete={deleteLog}
+                    canEdit={canEdit}
+                    isAdmin={user?.role === 'admin'}
+                />
+            ))}
 
-       {/* Dispatch History Section */}
-       {historyLogs.length > 0 && (
-           <div className="mt-8 border-t border-gray-100 pt-6 mb-10">
-               <div className="flex items-center justify-between mb-4 px-2">
-                   <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                       <History size={14} /> Recent Dispatches
-                   </h2>
-                   {isAdmin && (
-                       <button
-                           onClick={handleClearHistory}
-                           disabled={isClearingHistory}
-                           className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-full border border-red-200 active:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                           title={`Delete all ${historyLogs.length} dispatch records`}
-                       >
-                           Clear History
-                       </button>
-                   )}
-               </div>
-               
-               {/* Pagination Logic */}
-               {(() => {
-                   const itemsPerPage = 25;
-                   const totalPages = Math.ceil(historyLogs.length / itemsPerPage);
-                   const startIndex = (historyPage - 1) * itemsPerPage;
-                   const endIndex = startIndex + itemsPerPage;
-                   const paginatedLogs = historyLogs.slice(startIndex, endIndex);
-                   
-                   return (
-                       <>
-                           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                               {paginatedLogs.map(log => {
-                                   const product = products.find(p => p.id === log.productId);
-                                   const supplier = suppliers.find(s => s.id === log.supplierId);
-                                   
-                                   // Get dispatch time
-                                   const dispatchEntry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
-                                   let timeStr = '';
-                                   if (dispatchEntry) {
-                                       const d = new Date(dispatchEntry.timestamp);
-                                       timeStr = d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '');
-                                   }
+            {/* Dispatch History Section */}
+            {historyLogs.length > 0 && (
+                <div className="mt-8 border-t border-gray-100 pt-6 mb-10">
+                    <div className="flex items-center justify-between mb-4 px-2">
+                        <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                            <History size={14} /> Recent Dispatches
+                        </h2>
+                        {isAdmin && (
+                            <button
+                                onClick={handleClearHistory}
+                                disabled={isClearingHistory}
+                                className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-full border border-red-200 active:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                title={`Delete all ${historyLogs.length} dispatch records`}
+                            >
+                                Clear History
+                            </button>
+                        )}
+                    </div>
 
-                                   // Total Picked Qty
-                                   const qty = Object.values(log.pickedQty).reduce((a: number, b: number) => a + (b || 0), 0);
+                    {/* Pagination Logic */}
+                    {(() => {
+                        const itemsPerPage = 25;
+                        const totalPages = Math.ceil(historyLogs.length / itemsPerPage);
+                        const startIndex = (historyPage - 1) * itemsPerPage;
+                        const endIndex = startIndex + itemsPerPage;
+                        const paginatedLogs = historyLogs.slice(startIndex, endIndex);
 
-                                   return (
-                                       <div key={log.id} className="p-3 border-b border-gray-50 last:border-0 flex gap-3 opacity-90 hover:bg-gray-50 transition-colors">
-                                           <div 
-                                               className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm" 
-                                               onClick={() => {
-                                                   if(product?.imageUrl) {
-                                                       setPreviewImage(product.imageUrl, {
-                                                           title: product?.description,
-                                                           qty: `Sent: ${qty}`,
-                                                           tag: 'DISPATCHED'
-                                                       });
-                                                   }
-                                               }}
-                                           >
-                                               {product?.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />}
-                                           </div>
-                                           <div className="flex-1 min-w-0">
-                                               <div className="flex justify-between items-start">
-                                                   <div className="text-xs font-bold text-gray-900 truncate pr-2">{product?.description}</div>
-                                                   <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                                                       {timeStr}
-                                                   </span>
-                                               </div>
-                                               <div className="flex justify-between items-end mt-1">
-                                                   <div className="text-[10px] text-gray-500 font-medium">{supplier?.name || 'Unknown'}</div>
-                                                   <div className="flex items-center gap-2">
-                                                       {log.pickupProofUrl && (
-                                                            <button 
-                                                                onClick={() => setPreviewImage(log.pickupProofUrl || null, { tag: 'PROOF' })}
-                                                                className="text-[9px] text-blue-600 flex items-center gap-0.5 bg-blue-50 px-2 py-0.5 rounded-full hover:bg-blue-100 font-bold"
-                                                            >
-                                                                <ImageIcon size={10} /> Proof
-                                                            </button>
-                                                       )}
-                                                       <div className="text-[10px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
-                                                           Sent: {qty}
-                                                       </div>
-                                                   </div>
-                                               </div>
-                                           </div>
-                                       </div>
-                                   );
-                               })}
-                           </div>
-                           
-                           {/* Pagination Controls */}
-                           {totalPages > 1 && (
-                               <div className="mt-4 flex items-center justify-between gap-3">
-                                   <div className="text-xs font-bold text-gray-600">
-                                       Page <span className="text-blue-600">{historyPage}</span> of <span className="text-gray-900">{totalPages}</span>
-                                       <span className="text-gray-400 ml-2">({historyLogs.length} total)</span>
-                                   </div>
-                                   <div className="flex items-center gap-2">
-                                       <button
-                                           onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
-                                           disabled={historyPage === 1}
-                                           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                           title="Previous page"
-                                       >
-                                           <ChevronUp size={16} className="text-gray-600" />
-                                       </button>
-                                       <button
-                                           onClick={() => setHistoryPage(prev => Math.min(totalPages, prev + 1))}
-                                           disabled={historyPage === totalPages}
-                                           className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                           title="Next page"
-                                       >
-                                           <ChevronDown size={16} className="text-gray-600" />
-                                       </button>
-                                   </div>
-                               </div>
-                           )}
-                       </>
-                   );
-               })()}
-           </div>
-       )}
-    </div>
-  );
+                        return (
+                            <>
+                                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                                    {paginatedLogs.map(log => {
+                                        const product = products.find(p => p.id === log.productId);
+                                        const supplier = suppliers.find(s => s.id === log.supplierId);
+
+                                        // Get dispatch time
+                                        const dispatchEntry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
+                                        let timeStr = '';
+                                        if (dispatchEntry) {
+                                            const d = new Date(dispatchEntry.timestamp);
+                                            timeStr = d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '');
+                                        }
+
+                                        // Total Picked Qty
+                                        const qty = Object.values(log.pickedQty).reduce((a: number, b: number) => a + (b || 0), 0);
+
+                                        return (
+                                            <div key={log.id} className="p-3 border-b border-gray-50 last:border-0 flex gap-3 opacity-90 hover:bg-gray-50 transition-colors">
+                                                <div
+                                                    className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm"
+                                                    onClick={() => {
+                                                        if (product?.imageUrl) {
+                                                            setPreviewImage(product.imageUrl, {
+                                                                title: product?.description,
+                                                                qty: `Sent: ${qty}`,
+                                                                tag: 'DISPATCHED'
+                                                            });
+                                                        }
+                                                    }}
+                                                >
+                                                    {product?.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="text-xs font-bold text-gray-900 truncate pr-2">{product?.description}</div>
+                                                        <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                                                            {timeStr}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-end mt-1">
+                                                        <div className="text-[10px] text-gray-500 font-medium">{supplier?.name || 'Unknown'}</div>
+                                                        <div className="flex items-center gap-2">
+                                                            {log.pickupProofUrl && (
+                                                                <button
+                                                                    onClick={() => setPreviewImage(log.pickupProofUrl || null, { tag: 'PROOF' })}
+                                                                    className="text-[9px] text-blue-600 flex items-center gap-0.5 bg-blue-50 px-2 py-0.5 rounded-full hover:bg-blue-100 font-bold"
+                                                                >
+                                                                    <ImageIcon size={10} /> Proof
+                                                                </button>
+                                                            )}
+                                                            <div className="text-[10px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                                                Sent: {qty}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Pagination Controls */}
+                                {totalPages > 1 && (
+                                    <div className="mt-4 flex items-center justify-between gap-3">
+                                        <div className="text-xs font-bold text-gray-600">
+                                            Page <span className="text-blue-600">{historyPage}</span> of <span className="text-gray-900">{totalPages}</span>
+                                            <span className="text-gray-400 ml-2">({historyLogs.length} total)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
+                                                disabled={historyPage === 1}
+                                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                title="Previous page"
+                                            >
+                                                <ChevronUp size={16} className="text-gray-600" />
+                                            </button>
+                                            <button
+                                                onClick={() => setHistoryPage(prev => Math.min(totalPages, prev + 1))}
+                                                disabled={historyPage === totalPages}
+                                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                title="Next page"
+                                            >
+                                                <ChevronDown size={16} className="text-gray-600" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        );
+                    })()}
+                </div>
+            )}
+        </div>
+    );
 };
 
 const SupplierEditor: React.FC<{ current: string; suppliers: any[]; logId: string; updateLogSupplier: (logId: string, supplierName: string) => Promise<void> | void }> = ({ current, suppliers, logId, updateLogSupplier }) => {
@@ -386,15 +386,16 @@ const SupplierGroup: React.FC<{
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Calculate total pending quantity for this supplier
+    // Calculate total pending quantity for this supplier (ordered - dispatched)
     const totalPendingQty = logs.reduce((acc: number, log) => {
-        const orderedTotal = Object.values(log.orderedQty || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-        return acc + orderedTotal;
+        const orderedTotal = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        const dispatchedTotal = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        return acc + Math.max(0, orderedTotal - dispatchedTotal);
     }, 0);
 
     const handleDeleteAllSupplier = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        
+
         if (!isAdmin) {
             alert('You do not have permission to delete entries');
             return;
@@ -421,7 +422,7 @@ const SupplierGroup: React.FC<{
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
             {/* Header: Supplier Name with Quantity Badge */}
-            <div 
+            <div
                 onClick={() => setIsExpanded(!isExpanded)}
                 className={`w-full p-3 border-b border-gray-200 cursor-pointer transition-colors ${supplierName === 'Unknown Supplier' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 hover:bg-slate-200'}`}
             >
@@ -431,7 +432,7 @@ const SupplierGroup: React.FC<{
                         <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
                             {totalPendingQty} Items
                         </span>
-                        
+
                         {isAdmin && (
                             <button
                                 onClick={handleDeleteAllSupplier}
@@ -443,25 +444,25 @@ const SupplierGroup: React.FC<{
                             </button>
                         )}
                         <div className="text-gray-400">
-                            {isExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
+                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             {isExpanded && (
                 <div className="p-3 space-y-4">
                     {logs.map(log => (
-                        <PickupItem 
-                           key={log.id} 
-                           log={log} 
-                           product={products.find(p => p.id === log.productId)}
-                           currentSupplierName={supplierName}
-                           suppliers={suppliers}
-                           onSave={async (picked, notes, proof, price, supName, supPhone) => await onPickup(log.id, picked, notes, proof, price, supName, supPhone)}
-                           onDelete={onDelete}
-                           canEdit={canEdit}
-                           isAdmin={isAdmin}
+                        <PickupItem
+                            key={log.id}
+                            log={log}
+                            product={products.find(p => p.id === log.productId)}
+                            currentSupplierName={supplierName}
+                            suppliers={suppliers}
+                            onSave={async (picked, notes, proof, price, supName, supPhone) => await onPickup(log.id, picked, notes, proof, price, supName, supPhone)}
+                            onDelete={onDelete}
+                            canEdit={canEdit}
+                            isAdmin={isAdmin}
                         />
                     ))}
                 </div>
@@ -484,7 +485,7 @@ const PickupItem: React.FC<{
     const [pickedValues, setPickedValues] = useState<Record<string, number>>({ ...log.pickedQty });
     // Optimistic supplier selection so market person sees immediate feedback
     const [currentSupplierIdLocal, setCurrentSupplierIdLocal] = useState<string>(log.supplierId || '');
-    
+
     // Notes state
     const [showNotes, setShowNotes] = useState(!!log.notes);
     const [noteText, setNoteText] = useState(log.notes || '');
@@ -524,7 +525,7 @@ const PickupItem: React.FC<{
             alert('You do not have permission to process pickups');
             return;
         }
-        
+
         if (!proofImage) {
             setHighlightProof(true);
             setTimeout(() => setHighlightProof(false), 800);
@@ -544,7 +545,7 @@ const PickupItem: React.FC<{
             alert('Please select at least 1 item to dispatch');
             return;
         }
-        
+
         setIsLoading(true);
         try {
             console.log('Dispatching with data:', { pickedValues, noteText, proofImageSize: proofImage?.length });
@@ -578,15 +579,19 @@ const PickupItem: React.FC<{
 
     const updateQty = (size: string, delta: number) => {
         if (!canEdit) return;
-        
-        const maxLimit = log.orderedQty[size] || 0;
+
+        // Calculate remaining quantity (ordered - dispatched)
+        const orderedQty = log.orderedQty[size] || 0;
+        const dispatchedQty = log.dispatchedQty?.[size] || 0;
+        const maxLimit = Math.max(0, orderedQty - dispatchedQty);
+
         setPickedValues(prev => {
             const current = prev[size] || 0;
             const next = current + delta;
-            
+
             // Cannot go below 0
             if (next < 0) return prev;
-            // Cannot go above ordered qty
+            // Cannot go above remaining qty
             if (next > maxLimit) return prev;
 
             return { ...prev, [size]: next };
@@ -602,12 +607,12 @@ const PickupItem: React.FC<{
 
     const handlePreview = () => {
         if (!product?.imageUrl) return;
-        
+
         let sizeDetails = "";
         let totalQty = 0;
-        
+
         if (log.hasSizes) {
-            sizeDetails = Object.entries(log.orderedQty).map(([k,v]) => `${k}:${v}`).join('  ');
+            sizeDetails = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join('  ');
             // Fixed type error for reduce accumulator/current value
             totalQty = (Object.values(log.orderedQty) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
         } else {
@@ -625,160 +630,163 @@ const PickupItem: React.FC<{
     return (
         <div className="border-b border-gray-100 pb-4 last:border-0">
             <div className="flex gap-4 mb-3">
-                 <img 
-                    src={product?.imageUrl} 
-                    className="w-14 h-14 rounded-lg object-cover bg-gray-100 shadow-sm cursor-pointer border border-gray-100" 
+                <img
+                    src={product?.imageUrl}
+                    className="w-14 h-14 rounded-lg object-cover bg-gray-100 shadow-sm cursor-pointer border border-gray-100"
                     alt="prod"
                     onClick={handlePreview}
-                 />
-                 <div className="flex-1">
-                     <div className="flex justify-between items-center mb-1">
-                         {/* Replaced Item Description with Supplier Name as requested */}
-                            <div className="flex items-center gap-2">
-                                {/* If user can edit (market person), show a dropdown of existing suppliers so they can change per-entry supplier */}
-                                {canEdit ? (
-                                    <select
-                                        value={currentSupplierIdLocal}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={async (e) => {
-                                            e.stopPropagation();
-                                            const supId = e.target.value;
-                                            // update UI immediately
-                                            setCurrentSupplierIdLocal(supId);
-                                            const found = suppliers.find((s: any) => s.id === supId);
-                                            const name = found ? found.name : '';
-                                            try {
-                                                await updateLogSupplier(log.id, name);
-                                            } catch (err) {
-                                                console.error('Failed to update supplier', err);
-                                                alert('Failed to update supplier');
-                                                // rollback UI on failure
-                                                setCurrentSupplierIdLocal(log.supplierId || '');
-                                            }
-                                        }}
-                                        className="text-sm font-bold text-gray-900 bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none"
-                                    >
-                                        <option value="">Unassigned</option>
-                                        {suppliers.map((s: any) => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <div className="text-sm font-bold text-gray-900 line-clamp-1">{currentSupplierName}</div>
-                                )}
-                                {/* Keep quick inline editor (icon) for non-dropdown flows if needed */}
-                                {!canEdit && (
-                                    <SupplierEditor current={currentSupplierName} suppliers={suppliers} logId={log.id} updateLogSupplier={updateLogSupplier} />
-                                )}
-                            </div>
-                         
-                         {/* Timestamp and Info/Delete Buttons */}
-                         <div className="flex items-center gap-2">
-                             {/* Purchase Entry Info Icon */}
-                             <button
-                                 onClick={() => setShowHistory(true)}
-                                 className="text-gray-400 hover:text-gray-600 p-1 transition"
-                                 title="View purchase history"
-                             >
-                                 <Info size={14} />
-                             </button>
-                             
-                             {timeStr && (
-                                 <div className="text-[10px] font-medium text-gray-400 whitespace-nowrap">
-                                     {timeStr}
-                                 </div>
-                             )}
-                             {isAdmin && (
-                                 <button
-                                     onClick={handleDelete}
-                                     disabled={isDeleting}
-                                     className="p-1 rounded text-red-500 hover:bg-red-50 active:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                     title="Delete entry"
-                                 >
-                                     <Trash2 size={16} />
-                                 </button>
-                             )}
-                         </div>
-                     </div>
-                     
-                     {/* Show product description subtly if needed, though instruction was to replace it */}
-                     {product?.description && product.description !== 'Item' && (
-                         <div className="text-[10px] text-gray-500 font-medium line-clamp-1">{product.description}</div>
-                     )}
-                 </div>
+                />
+                <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                        {/* Replaced Item Description with Supplier Name as requested */}
+                        <div className="flex items-center gap-2">
+                            {/* If user can edit (market person), show a dropdown of existing suppliers so they can change per-entry supplier */}
+                            {canEdit ? (
+                                <select
+                                    value={currentSupplierIdLocal}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={async (e) => {
+                                        e.stopPropagation();
+                                        const supId = e.target.value;
+                                        // update UI immediately
+                                        setCurrentSupplierIdLocal(supId);
+                                        const found = suppliers.find((s: any) => s.id === supId);
+                                        const name = found ? found.name : '';
+                                        try {
+                                            await updateLogSupplier(log.id, name);
+                                        } catch (err) {
+                                            console.error('Failed to update supplier', err);
+                                            alert('Failed to update supplier');
+                                            // rollback UI on failure
+                                            setCurrentSupplierIdLocal(log.supplierId || '');
+                                        }
+                                    }}
+                                    className="text-sm font-bold text-gray-900 bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none"
+                                >
+                                    <option value="">Unassigned</option>
+                                    {suppliers.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <div className="text-sm font-bold text-gray-900 line-clamp-1">{currentSupplierName}</div>
+                            )}
+                            {/* Keep quick inline editor (icon) for non-dropdown flows if needed */}
+                            {!canEdit && (
+                                <SupplierEditor current={currentSupplierName} suppliers={suppliers} logId={log.id} updateLogSupplier={updateLogSupplier} />
+                            )}
+                        </div>
+
+                        {/* Timestamp and Info/Delete Buttons */}
+                        <div className="flex items-center gap-2">
+                            {/* Purchase Entry Info Icon */}
+                            <button
+                                onClick={() => setShowHistory(true)}
+                                className="text-gray-400 hover:text-gray-600 p-1 transition"
+                                title="View purchase history"
+                            >
+                                <Info size={14} />
+                            </button>
+
+                            {timeStr && (
+                                <div className="text-[10px] font-medium text-gray-400 whitespace-nowrap">
+                                    {timeStr}
+                                </div>
+                            )}
+                            {isAdmin && (
+                                <button
+                                    onClick={handleDelete}
+                                    disabled={isDeleting}
+                                    className="p-1 rounded text-red-500 hover:bg-red-50 active:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    title="Delete entry"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Show product description subtly if needed, though instruction was to replace it */}
+                    {product?.description && product.description !== 'Item' && (
+                        <div className="text-[10px] text-gray-500 font-medium line-clamp-1">{product.description}</div>
+                    )}
+                </div>
             </div>
 
             <div className="space-y-1.5 mb-4">
-                 {Object.entries(log.orderedQty).map(([size, ordQty]) => {
-                     const picked = pickedValues[size] || 0;
-                     const isComplete = picked >= ordQty;
+                {Object.entries(log.orderedQty).map(([size, ordQty]) => {
+                    // Calculate remaining quantity (ordered - dispatched)
+                    const dispatchedQty = log.dispatchedQty?.[size] || 0;
+                    const remainingQty = Math.max(0, (ordQty as number) - dispatchedQty);
+                    const picked = pickedValues[size] || 0;
+                    const isComplete = picked >= remainingQty;
 
-                     return (
-                         <div key={size} className="flex items-center justify-between bg-gray-50 py-1.5 px-2.5 rounded-lg border border-gray-50">
-                             <span className="text-xs font-bold text-gray-700 w-12">{size === 'Total' ? 'Qty' : size}</span>
-                             
-                             <div className="flex items-center gap-4">
-                                 <div className="text-right">
-                                     <span className="text-[8px] text-gray-400 uppercase font-bold block">Ord</span>
-                                     <span className="text-sm font-bold text-gray-900">{ordQty}</span>
-                                 </div>
+                    return (
+                        <div key={size} className="flex items-center justify-between bg-gray-50 py-1.5 px-2.5 rounded-lg border border-gray-50">
+                            <span className="text-xs font-bold text-gray-700 w-12">{size === 'Total' ? 'Qty' : size}</span>
 
-                                 <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
-                                     <button 
+                            <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                    <span className="text-[8px] text-gray-400 uppercase font-bold block">Remaining</span>
+                                    <span className="text-sm font-bold text-gray-900">{remainingQty}</span>
+                                </div>
+
+                                <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
+                                    <button
                                         onClick={() => updateQty(size, -1)}
                                         disabled={!canEdit}
                                         className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-100 rounded text-gray-600 active:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                                     >
-                                         <Minus size={14} />
-                                     </button>
-                                     <div className="w-10 text-center font-bold text-sm text-blue-600">
-                                         {picked}
-                                     </div>
-                                     <button 
+                                    >
+                                        <Minus size={14} />
+                                    </button>
+                                    <div className="w-10 text-center font-bold text-sm text-blue-600">
+                                        {picked}
+                                    </div>
+                                    <button
                                         onClick={() => updateQty(size, 1)}
                                         disabled={isComplete || !canEdit}
                                         className={`w-8 h-8 flex items-center justify-center rounded text-white active:scale-95 transition-transform ${isComplete || !canEdit ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                     >
-                                         <Plus size={14} />
-                                     </button>
-                                 </div>
-                             </div>
-                         </div>
-                     );
-                 })}
+                                    >
+                                        <Plus size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="mb-4">
-                 <button 
-                    onClick={() => setShowNotes(!showNotes)} 
+                <button
+                    onClick={() => setShowNotes(!showNotes)}
                     className="flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-gray-600 mb-2"
-                 >
-                     {showNotes ? <Minus size={10}/> : <Plus size={10}/>} {log.notes ? 'Edit Note' : 'Add Note'}
-                 </button>
-                 {showNotes && (
-                     <textarea 
+                >
+                    {showNotes ? <Minus size={10} /> : <Plus size={10} />} {log.notes ? 'Edit Note' : 'Add Note'}
+                </button>
+                {showNotes && (
+                    <textarea
                         className="w-full text-xs p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-900 placeholder-yellow-500/50 focus:outline-none focus:ring-1 focus:ring-yellow-400"
                         rows={2}
                         placeholder="Add a note (e.g. 'Partial pickup', 'Damaged')..."
                         value={noteText}
                         onChange={e => setNoteText(e.target.value)}
-                     />
-                 )}
+                    />
+                )}
             </div>
-            
+
             {/* ACTION FOOTER: Proof & Dispatch Side-by-Side - SLIMMER */}
             <div className="flex gap-3 items-stretch">
                 {/* Proof Section */}
                 <div className={`flex-1 min-w-0 transition-all duration-300 ${highlightProof ? 'ring-2 ring-red-400 rounded-xl animate-pulse' : ''}`}>
                     {proofImage ? (
                         <div className="relative h-10 w-full group">
-                            <img 
-                                src={proofImage} 
-                                className="h-full w-full object-cover rounded-xl border border-gray-200 shadow-sm cursor-pointer" 
-                                alt="Proof" 
+                            <img
+                                src={proofImage}
+                                className="h-full w-full object-cover rounded-xl border border-gray-200 shadow-sm cursor-pointer"
+                                alt="Proof"
                                 onClick={() => setPreviewImage(proofImage, { tag: 'PROOF' })}
                             />
-                            <button 
+                            <button
                                 onClick={() => setProofImage(null)}
                                 className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 z-10"
                             >
@@ -786,7 +794,7 @@ const PickupItem: React.FC<{
                             </button>
                         </div>
                     ) : (
-                        <div 
+                        <div
                             onClick={() => fileInputRef.current?.click()}
                             className={`h-10 w-full border border-dashed rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-[0.98] ${highlightProof ? 'border-red-400 bg-red-50 text-red-500' : 'border-gray-300 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600'}`}
                         >
@@ -794,8 +802,8 @@ const PickupItem: React.FC<{
                             <span className="text-[10px] font-bold">{highlightProof ? 'Required!' : 'Proof'}</span>
                         </div>
                     )}
-                    <input 
-                        type="file" 
+                    <input
+                        type="file"
                         ref={fileInputRef}
                         className="hidden"
                         accept="image/*"
@@ -805,7 +813,7 @@ const PickupItem: React.FC<{
                 </div>
 
                 {/* Dispatch Button */}
-                <button 
+                <button
                     onClick={handleSave}
                     disabled={!canEdit || !proofImage || isLoading}
                     className={`flex-[2] h-10 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md ${!proofImage || !canEdit || isLoading ? 'bg-gray-200 text-gray-400 hover:bg-gray-300 disabled:cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-black active:scale-[0.98]'}`}
@@ -827,7 +835,7 @@ const PickupItem: React.FC<{
                                 <X size={18} className="text-gray-600" />
                             </button>
                         </div>
-                        
+
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {log.history.map((entry, idx) => (
                                 <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
@@ -837,13 +845,13 @@ const PickupItem: React.FC<{
                                                 {entry.action.charAt(0).toUpperCase() + entry.action.slice(1).replace(/_/g, ' ')}
                                             </div>
                                             <div className="text-sm font-bold text-gray-900 mb-1">
-                                                {new Date(entry.timestamp).toLocaleString('en-GB', { 
-                                                    day: 'numeric', 
-                                                    month: 'short', 
+                                                {new Date(entry.timestamp).toLocaleString('en-GB', {
+                                                    day: 'numeric',
+                                                    month: 'short',
                                                     year: 'numeric',
-                                                    hour: 'numeric', 
-                                                    minute: '2-digit', 
-                                                    hour12: true 
+                                                    hour: 'numeric',
+                                                    minute: '2-digit',
+                                                    hour12: true
                                                 })}
                                             </div>
                                             {entry.details && (
@@ -854,7 +862,7 @@ const PickupItem: React.FC<{
                                 </div>
                             ))}
                         </div>
-                        
+
                         <div className="p-4 bg-white border-t border-gray-100 safe-area-pb">
                             <button
                                 onClick={() => setShowHistory(false)}
