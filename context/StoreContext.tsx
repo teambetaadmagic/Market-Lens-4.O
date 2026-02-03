@@ -944,6 +944,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain}`);
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             accessToken: config.accessToken,
@@ -966,6 +967,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     // Search all stores concurrently
+    console.log(`[fetchShopifyOrder] executing ${shopifyConfigs.length} parallel requests...`);
     const results = await Promise.all(shopifyConfigs.map(config => searchStore(config)));
     const foundOrder = results.find(result => result !== null);
 

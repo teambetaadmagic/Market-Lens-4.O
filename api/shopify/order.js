@@ -36,6 +36,7 @@ export default async function handler(req, res) {
             console.log('[Shopify Order API] Searching with params:', searchParams, 'at', fullDomain);
             const res = await fetch(searchUrl, {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'X-Shopify-Access-Token': accessToken.trim(),
                     'Content-Type': 'application/json',
