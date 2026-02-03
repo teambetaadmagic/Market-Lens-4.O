@@ -332,6 +332,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
       }, handleError);
 
+      // Set a timeout for initialization - if not initialized after 10 seconds, mark as initialized anyway
+      const initTimeout = setTimeout(() => {
+        console.warn('[StoreContext] Initialization timeout - marking as initialized after 10s');
+        setIsInitialized(true);
+      }, 10000);
+
       return () => {
         try {
           clearTimeout(initTimeout);
@@ -346,7 +352,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.error('[StoreContext] Failed to cleanup listeners:', e);
         }
       };
-    }, []);
+    } catch (e) {
+      console.error('[StoreContext] Fatal error in Firestore initialization:', e);
+      setIsInitialized(true);
+      setInitError({ code: 'fatal-error', message: (e as any)?.message || 'Unknown error' });
+      return () => {};
+    }
+  }, []);
 
   const findProductByHash = useCallback((hash: string) => {
     return data.products.find(p => p.imageHash === hash) || null;
