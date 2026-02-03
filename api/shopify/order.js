@@ -32,114 +32,89 @@ export default async function handler(req, res) {
 
         console.log('[Shopify Order API] Starting order search for:', orderName, 'at', fullDomain);
 
-        // 1. Find the order by name with timeout handling and multiple search strategies
-        const fetchOrder = async (searchParams, description = '') => {
-            const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?${searchParams}&limit=250&status=any`;
-            console.log('[Shopify Order API]', description, 'Searching with URL params:', searchParams);
+        let order = null;
+        let pageInfo = null;
+
+        // Fetch orders with pagination and filter client-side for more reliable search
+        const searchOrdersWithPagination = async () => {
+            console.log('[Shopify Order API] Using pagination-based search...');
             
             try {
-                // Create an abort controller with 30-second timeout
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-                
-                const res = await fetch(searchUrl, {
-                    method: 'GET',
-                    cache: 'no-store',
-                    signal: controller.signal,
-                    headers: {
-                        'X-Shopify-Access-Token': accessToken.trim(),
-                        'Content-Type': 'application/json',
-                    },
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (!res.ok) {
-                    console.warn(`[Shopify Order API] ${description} - Non-OK response: ${res.status} from ${fullDomain}`);
-                    return null;
+                let hasNextPage = true;
+                let cursor = null;
+                let searchAttempts = 0;
+                const maxAttempts = 5; // Search through up to 5 pages (250 orders per page)
+
+                while (hasNextPage && searchAttempts < maxAttempts && !order) {
+                    searchAttempts++;
+                    console.log(`[Shopify Order API] Searching page ${searchAttempts}...`);
+
+                    // Create request URL with pagination
+                    let url = `https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`;
+                    if (cursor) {
+                        url += `&after=${cursor}`;
+                    }
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                    const res = await fetch(url, {
+                        method: 'GET',
+                        cache: 'no-store',
+                        signal: controller.signal,
+                        headers: {
+                            'X-Shopify-Access-Token': accessToken.trim(),
+                            'Content-Type': 'application/json',
+                        },
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!res.ok) {
+                        console.warn(`[Shopify Order API] Non-OK response: ${res.status}`);
+                        return null;
+                    }
+
+                    const data = await res.json();
+                    
+                    if (data.orders && data.orders.length > 0) {
+                        console.log(`[Shopify Order API] Found ${data.orders.length} orders on page ${searchAttempts}`);
+                        
+                        // Search for exact match
+                        order = data.orders.find(o => o.name === orderName);
+                        
+                        if (order) {
+                            console.log('[Shopify Order API] ✅ Order found:', order.name);
+                            return order;
+                        }
+                    }
+
+                    // Check for next page
+                    const linkHeader = res.headers.get('link');
+                    hasNextPage = linkHeader && linkHeader.includes('rel="next"');
+                    
+                    if (hasNextPage) {
+                        // Extract cursor from link header
+                        const nextMatch = linkHeader.match(/after=([^&;]+)/);
+                        cursor = nextMatch ? nextMatch[1] : null;
+                    }
                 }
-                
-                const data = await res.json();
-                if (data.orders && data.orders.length > 0) {
-                    console.log('[Shopify Order API]', description, `Found ${data.orders.length} matching orders`);
-                    return data.orders[0];
-                }
-                console.log('[Shopify Order API]', description, 'No orders found');
-                return null;
+
+                return order;
             } catch (err) {
-                if (err.name === 'AbortError') {
-                    console.error(`[Shopify Order API] ${description} - Request timeout for ${fullDomain}`);
-                } else {
-                    console.error(`[Shopify Order API] ${description} - Fetch error for ${fullDomain}:`, err.message);
-                }
+                console.error('[Shopify Order API] Pagination search error:', err.message);
                 return null;
             }
         };
 
-        // Try multiple search strategies in sequence
-        let order = null;
-
-        // Strategy 1: Try exact name match with # (as provided)
-        order = await fetchOrder(`name=${encodeURIComponent(orderName)}`, 'Strategy 1 (exact name)');
-        
-        // Strategy 2: Use financial_status for better search
-        if (!order) {
-            order = await fetchOrder(`name=${encodeURIComponent(orderName)}&financial_status=paid`, 'Strategy 2 (paid orders)');
-        }
-
-        // Strategy 3: Use fulfillment_status for better search
-        if (!order) {
-            order = await fetchOrder(`name=${encodeURIComponent(orderName)}&fulfillment_status=fulfilled`, 'Strategy 3 (fulfilled orders)');
-        }
-
-        // Strategy 4: Loose search with query parameter (Shopify's fallback search)
-        if (!order) {
-            order = await fetchOrder(`query=${encodeURIComponent(orderName)}`, 'Strategy 4 (loose query search)');
-        }
-
-        // Strategy 5: Search all orders and filter client-side (last resort for hundreds of orders)
-        if (!order) {
-            console.log('[Shopify Order API] Strategy 5 - Searching all recent orders...');
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-                
-                const res = await fetch(`https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`, {
-                    method: 'GET',
-                    cache: 'no-store',
-                    signal: controller.signal,
-                    headers: {
-                        'X-Shopify-Access-Token': accessToken.trim(),
-                        'Content-Type': 'application/json',
-                    },
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (res.ok) {
-                    const data = await res.json();
-                    
-                    if (data.orders && data.orders.length > 0) {
-                        // Search by exact order name (with #)
-                        order = data.orders.find(o => o.name === orderName);
-                        
-                        if (order) {
-                            console.log('[Shopify Order API] Strategy 5 - Found order in recent orders:', order.name);
-                        } else {
-                            console.log('[Shopify Order API] Strategy 5 - Order not found in recent orders');
-                        }
-                    }
-                }
-            } catch (err) {
-                console.warn('[Shopify Order API] Strategy 5 failed:', err.message);
-            }
-        }
+        // Use pagination-based search (more reliable than API search parameter)
+        order = await searchOrdersWithPagination();
 
         if (!order) {
-            console.log('[Shopify Order API] Order not found in any strategy for:', orderName);
+            console.log('[Shopify Order API] Order not found in pagination search for:', orderName);
             return res.status(404).json({
                 success: false,
-                message: `Order "${orderName}" not found in Shopify. Tried 5 different search strategies.`
+                message: `Order "${orderName}" not found in Shopify after searching recent orders.`
             });
         }
 
