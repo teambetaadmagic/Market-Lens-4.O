@@ -92,8 +92,12 @@ const generateId = () => {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  DEBUG.log('STORE', 'StoreProvider initializing');
-  DEBUG.log('STORE', 'Firebase db instance:', db ? 'AVAILABLE' : 'MISSING');
+  try {
+    DEBUG.log('STORE', 'StoreProvider initializing');
+    DEBUG.log('STORE', 'Firebase db instance:', db ? 'AVAILABLE' : 'MISSING');
+  } catch (e) {
+    DEBUG.error('STORE', 'Failed to initialize logging', e);
+  }
   
   const [data, setData] = useState<AppState>({
     suppliers: [],
@@ -104,8 +108,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [user, setUser] = useState<User | null>(() => {
     // Load user from localStorage
-    const saved = localStorage.getItem('market-lens-user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('market-lens-user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      DEBUG.error('STORE', 'Failed to load user from localStorage', e);
+      return null;
+    }
   });
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -258,23 +267,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 1. Subscribe to Firestore Collections
   useEffect(() => {
-    DEBUG.log('STORE', 'Initializing Firestore listeners...');
-    
-    const handleError = (error: any) => {
-      DEBUG.error('STORE', 'Firestore Listener Error', { code: error?.code, message: error?.message });
-      if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
-        setInitError(error);
-        setIsInitialized(true); // Still mark as initialized so we can show the error screen
-      }
-    };
+    try {
+      DEBUG.log('STORE', 'Initializing Firestore listeners...');
+      
+      const handleError = (error: any) => {
+        DEBUG.error('STORE', 'Firestore Listener Error', { code: error?.code, message: error?.message });
+        if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
+          setInitError(error);
+          setIsInitialized(true); // Still mark as initialized so we can show the error screen
+        }
+      };
 
-    const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
-      const suppliers = snapshot.docs.map(doc => doc.data() as Supplier);
-      DEBUG.log('STORE', `Suppliers synced: ${suppliers.length} records`);
-      setData(prev => ({ ...prev, suppliers }));
-      setInitError(null);
-      setIsInitialized(true);
-    }, handleError);
+      const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
+        const suppliers = snapshot.docs.map(doc => doc.data() as Supplier);
+        DEBUG.log('STORE', `Suppliers synced: ${suppliers.length} records`);
+        setData(prev => ({ ...prev, suppliers }));
+        setInitError(null);
+        setIsInitialized(true);
+      }, handleError);
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       const products = snapshot.docs.map(doc => doc.data() as ProductMaster);
@@ -330,14 +340,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 10000);
 
     return () => {
-      clearTimeout(initTimeout);
-      unsubSuppliers();
-      unsubProducts();
-      unsubLogs();
-      unsubShopifyConfigs();
-      unsubShopifyOrders();
-      unsubPurchaseOrders();
-      unsubProductHistory();
+      try {
+        clearTimeout(initTimeout);
+        unsubSuppliers();
+        unsubProducts();
+        unsubLogs();
+        unsubShopifyConfigs();
+        unsubShopifyOrders();
+        unsubPurchaseOrders();
+        unsubProductHistory();
+      } catch (e) {
+        console.error('[StoreContext] Failed to cleanup listeners:', e);
+      }
     };
   }, []);
 

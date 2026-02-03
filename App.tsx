@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navigation } from './components/Navigation';
 import { LoginPage } from './components/LoginPage';
 import { OrdersView } from './views/OrdersView';
@@ -270,14 +271,17 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  // Setup guard
   if (!isConfigured) {
-      return <SetupGuide />;
+    return <ErrorBoundary><SetupGuide /></ErrorBoundary>;
   }
 
   return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 };
 
