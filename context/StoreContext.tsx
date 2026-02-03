@@ -934,7 +934,53 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const fetchShopifyOrder = useCallback(async (orderName: string) => {
+  const fetchShopifyOrder = useCallback(async (orderName: string, specificStore?: ShopifyConfig) => {
+    // If a specific store is provided, only search that store
+    if (specificStore) {
+      console.log('[fetchShopifyOrder] Searching in specific store:', specificStore.shopName || specificStore.shopifyDomain);
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        
+        const response = await fetch('/api/shopify/order', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessToken: specificStore.accessToken,
+            shopifyDomain: specificStore.shopifyDomain,
+            orderName: orderName
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            console.log(`[fetchShopifyOrder] ✅ Order found in ${specificStore.shopName || specificStore.shopifyDomain}!`);
+            return {
+              ...data,
+              shopName: specificStore.shopName || specificStore.shopifyDomain,
+              shopifyDomain: specificStore.shopifyDomain
+            };
+          }
+        } else if (response.status === 404) {
+          throw new Error(`Order "${orderName}" not found in ${specificStore.shopName || specificStore.shopifyDomain}`);
+        } else {
+          const errorText = await response.text();
+          throw new Error(`Error from ${specificStore.shopName || specificStore.shopifyDomain}: ${response.status} - ${errorText}`);
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          throw new Error(`Request timeout while searching ${specificStore.shopName || specificStore.shopifyDomain}`);
+        }
+        throw err;
+      }
+    }
+
+    // If no specific store, fall back to searching all stores
     if (shopifyConfigs.length === 0) {
       console.error('[fetchShopifyOrder] ERROR: No Shopify configs available! Available:', shopifyConfigs.length);
       throw new Error('No Shopify stores connected. Please add a store in Settings.');
