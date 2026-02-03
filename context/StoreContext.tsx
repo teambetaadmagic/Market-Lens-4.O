@@ -939,8 +939,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     console.log('[fetchShopifyOrder] Searching for order:', orderName, 'across', shopifyConfigs.length, 'stores');
 
-    // Try each config until we find the order
-    for (const config of shopifyConfigs) {
+    const searchStore = async (config: ShopifyConfig) => {
       try {
         console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain}`);
         const response = await fetch('/api/shopify/order', {
@@ -953,27 +952,28 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           })
         });
 
-        console.log(`[fetchShopifyOrder] Response status:`, response.status);
-
         if (response.ok) {
           const data = await response.json();
-          console.log(`[fetchShopifyOrder] Got response:`, data);
           if (data.success) {
-            console.log(`[fetchShopifyOrder] ✅ Order found!`);
+            console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName}!`);
             return { ...data, shopName: config.shopName || config.shopifyDomain };
-          } else {
-            console.log(`[fetchShopifyOrder] Response not successful:`, data.message);
           }
-        } else {
-          const errorText = await response.text();
-          console.warn(`[fetchShopifyOrder] API returned ${response.status}:`, errorText);
         }
       } catch (err) {
         console.warn(`[fetchShopifyOrder] Failed to search in store ${config.shopifyDomain}:`, err);
       }
+      return null;
+    };
+
+    // Search all stores concurrently
+    const results = await Promise.all(shopifyConfigs.map(config => searchStore(config)));
+    const foundOrder = results.find(result => result !== null);
+
+    if (foundOrder) {
+      return foundOrder;
     }
 
-    throw new Error(`Order "${orderName}" not found in any connected Shopify stores.`);
+    throw new Error(`Order "${orderName}" not found in any of the ${shopifyConfigs.length} connected stores.`);
   }, [shopifyConfigs]);
 
   // Purchase Order Management Functions
