@@ -616,12 +616,13 @@ export const OrdersView: React.FC = () => {
             );
             console.log('[OrdersView] Saved Shopify order to Firebase:', shopifyOrderId, 'from store:', orderData.shopName || orderData.shopifyDomain);
 
-            // 2. Automatically create logs for each line item
-            const logsCreated: DailyLog[] = [];
-            let itemsProcessed = 0;
-
-            for (const item of orderData.lineItems) {
-                if (item.image_url) {
+            // 2. Automatically create logs for each line item - PARALLELIZED for speed
+            console.log(`[OrdersView] Processing ${orderData.lineItems.length} items in parallel...`);
+            
+            // Process all images in parallel instead of sequentially
+            const itemProcessingPromises = orderData.lineItems
+                .filter(item => item.image_url)
+                .map(async (item) => {
                     try {
                         console.log(`[OrdersView] Processing item: ${item.title}, Variant: ${item.variant_title}, Qty: ${item.quantity}`);
                         
@@ -641,7 +642,6 @@ export const OrdersView: React.FC = () => {
                         // Prepare quantities with size/variant
                         const itemQtys: Record<string, number> = {};
                         const hasSizes = item.variant_title && item.variant_title !== 'Default Title';
-                        const itemSize = hasSizes ? item.variant_title : undefined;
                         
                         if (hasSizes) {
                             itemQtys[item.variant_title] = item.quantity;
@@ -672,16 +672,16 @@ export const OrdersView: React.FC = () => {
                             undefined, // NO price
                             undefined // no supplier phone
                         );
-                        logsCreated.push(item.title);
-                        itemsProcessed++;
                         console.log(`[OrdersView] ✅ Processed item successfully`);
+                        return item.title;
                     } catch (imgErr) {
                         console.error(`[OrdersView] Failed to process image for ${item.title}:`, imgErr);
+                        return null;
                     }
-                } else {
-                    console.warn(`[OrdersView] Skipping item without image: ${item.title}`);
-                }
-            }
+                });
+
+            const logsCreated = (await Promise.all(itemProcessingPromises)).filter(title => title !== null);
+            const itemsProcessed = logsCreated.length;
 
             if (itemsProcessed === 0) {
                 throw new Error("Failed to process any items from the order - no items with images found");
@@ -689,47 +689,50 @@ export const OrdersView: React.FC = () => {
             
             console.log(`[OrdersView] Successfully processed ${itemsProcessed} items from order`);
 
-            // 3. Create a Purchase Order from the Shopify order
-            try {
-                const poItems: PurchaseOrderItem[] = orderData.lineItems
-                    .filter((item: any) => item.image_url) // Only items with images
-                    .map((item: any, idx: number) => ({
-                        id: `item_${Date.now()}_${idx}`,
-                        productId: `shopify_${item.id}`,
-                        title: item.title,
-                        quantity: { 
-                            [item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : 'Total']: item.quantity 
-                        },
-                        price: 0, // NO price
-                        hasSizes: !!(item.variant_title && item.variant_title !== 'Default Title'),
-                        imageUrl: item.image_url
-                    }));
+            // 3. Create a Purchase Order from the Shopify order (PARALLEL with daily log creation)
+            // This will happen asynchronously while we set success status
+            const poCreationPromise = (async () => {
+                try {
+                    const poItems: PurchaseOrderItem[] = orderData.lineItems
+                        .filter((item: any) => item.image_url) // Only items with images
+                        .map((item: any, idx: number) => ({
+                            id: `item_${Date.now()}_${idx}`,
+                            productId: `shopify_${item.id}`,
+                            title: item.title,
+                            quantity: { 
+                                [item.variant_title && item.variant_title !== 'Default Title' ? item.variant_title : 'Total']: item.quantity 
+                            },
+                            price: 0, // NO price
+                            hasSizes: !!(item.variant_title && item.variant_title !== 'Default Title'),
+                            imageUrl: item.image_url
+                        }));
 
-                console.log(`[OrdersView] Creating PO with ${poItems.length} items from Shopify order`);
+                    console.log(`[OrdersView] Creating PO with ${poItems.length} items from Shopify order`);
 
-                await savePurchaseOrder({
-                    supplierId: undefined,
-                    supplierName: `Shopify - ${orderData.shopName || orderData.shopifyDomain}`,
-                    supplierPhone: undefined,
-                    items: poItems,
-                    totalAmount: 0, // NO total amount
-                    status: 'confirmed',
-                    linkedShopifyOrderId: shopifyOrderId,
-                    notes: `Auto-created from Shopify order ${cleanedName} - ${itemsProcessed} items scanned`,
-                    history: [
-                        {
-                            action: 'created_from_shopify',
-                            timestamp: Date.now(),
-                            details: `Created from Shopify order ${cleanedName}`,
-                            userId: user?.id
-                        }
-                    ]
-                });
-                console.log('[OrdersView] ✅ Purchase order created successfully');
-            } catch (poErr) {
-                console.error('[OrdersView] Failed to create purchase order:', poErr);
-                // Continue anyway - daily logs were created successfully
-            }
+                    await savePurchaseOrder({
+                        supplierId: undefined,
+                        supplierName: `Shopify - ${orderData.shopName || orderData.shopifyDomain}`,
+                        supplierPhone: undefined,
+                        items: poItems,
+                        totalAmount: 0, // NO total amount
+                        status: 'confirmed',
+                        linkedShopifyOrderId: shopifyOrderId,
+                        notes: `Auto-created from Shopify order ${cleanedName} - ${itemsProcessed} items scanned`,
+                        history: [
+                            {
+                                action: 'created_from_shopify',
+                                timestamp: Date.now(),
+                                details: `Created from Shopify order ${cleanedName}`,
+                                userId: user?.id
+                            }
+                        ]
+                    });
+                    console.log('[OrdersView] ✅ Purchase order created successfully');
+                } catch (poErr) {
+                    console.error('[OrdersView] Failed to create purchase order:', poErr);
+                    // Continue anyway - daily logs were created successfully
+                }
+            })();
 
             setScanStatus('success');
             // Keep success message visible for 4 seconds then auto-dismiss
@@ -1451,51 +1454,21 @@ export const OrdersView: React.FC = () => {
                         </div>
 
                         <div className="p-6 bg-white border-t space-y-4">
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Order Number</p>
-                                    {barcodeDetected && (
-                                        <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full animate-pulse">
-                                            ✓ Scanned
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex w-full gap-2">
-                                    <input
-                                        type="text"
-                                        id="order-input"
-                                        placeholder="Order # (e.g. 1001)"
-                                        className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all ${barcodeDetected 
-                                            ? 'bg-green-50 border-2 border-green-500 focus:ring-2 focus:ring-green-500' 
-                                            : 'bg-gray-100 border-none focus:ring-2 focus:ring-blue-500'
-                                        }`}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                const input = (e.target as HTMLInputElement).value;
-                                                if (input.trim()) {
-                                                    handleOrderScan(input);
-                                                }
-                                            }
-                                        }}
-                                        autoFocus
-                                    />
-                                    <button
-                                        onClick={(e) => {
-                                            const input = document.getElementById('order-input') as HTMLInputElement;
-                                            if (input && input.value.trim()) {
-                                                handleOrderScan(input.value);
-                                            }
-                                        }}
-                                        className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition font-bold flex items-center gap-2 active:scale-95"
-                                    >
-                                        <Plus size={20} />
-                                        <span className="text-sm">ADD</span>
-                                    </button>
-                                </div>
+                            <div className="flex flex-col items-center gap-3 justify-center py-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Scanned Order</p>
+                                <p className="text-3xl font-bold text-blue-600">{lastScannedBarcode || '—'}</p>
+                                {scanStatus === 'searching' && (
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <Loader2 size={16} className="animate-spin text-blue-600" />
+                                        <span className="text-xs text-blue-600 font-medium">Processing...</span>
+                                    </div>
+                                )}
+                                {scanStatus === 'success' && (
+                                    <span className="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full animate-pulse">
+                                        ✓ Order Added
+                                    </span>
+                                )}
                             </div>
-                            <p className="text-center text-[10px] text-gray-400">
-                                Scan barcode or enter order number manually
-                            </p>
                         </div>
                     </div>
                 </div>

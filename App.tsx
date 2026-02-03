@@ -185,12 +185,11 @@ const AppContent: React.FC = () => {
          {/* Top Bar Decoration */}
          <div className="h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 w-full z-50 flex-shrink-0"></div>
          
-         {/* User Info Bar */}
-         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-           <div>
-             <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Logged in as</p>
-             <p className="text-sm font-bold text-gray-900">{user.username}</p>
-             <p className="text-xs text-blue-600 capitalize font-semibold">{user.role.replace('_', ' ')}</p>
+         {/* User Info Bar - Compact Badge */}
+         <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-100 rounded-full">
+             <span className="text-xs font-bold text-blue-900">{user.username}</span>
+             <span className="text-[10px] font-semibold text-blue-700 bg-blue-200 px-2 py-0.5 rounded-full capitalize">{user.role.replace('_', ' ')}</span>
            </div>
          </div>
          
