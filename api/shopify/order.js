@@ -32,37 +32,44 @@ export default async function handler(req, res) {
 
         // 1. Find the order by name
         // Shopify order names usually include the prefix, e.g., "#1001"
-        const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?name=${encodeURIComponent(orderName)}&status=any`;
-
-        console.log('[Shopify Order API] Searching for order:', orderName, 'at', fullDomain);
-
-        const orderResponse = await fetch(searchUrl, {
-            method: 'GET',
-            headers: {
-                'X-Shopify-Access-Token': accessToken.trim(),
-                'Content-Type': 'application/json',
-            },
-        });
-
-        if (!orderResponse.ok) {
-            const errorText = await orderResponse.text();
-            console.error('[Shopify Order API] Order fetch failed:', orderResponse.status, errorText);
-            return res.status(orderResponse.status).json({
-                success: false,
-                message: `Shopify API error: ${orderResponse.statusText}`
+        const fetchOrder = async (name) => {
+            const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?name=${encodeURIComponent(name)}&status=any`;
+            console.log('[Shopify Order API] Searching for order:', name, 'at', fullDomain);
+            const res = await fetch(searchUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Shopify-Access-Token': accessToken.trim(),
+                    'Content-Type': 'application/json',
+                },
             });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return (data.orders && data.orders.length > 0) ? data.orders[0] : null;
+        };
+
+        let order = await fetchOrder(orderName);
+
+        // Retry logic: If not found, try adding/removing '#'
+        if (!order) {
+            console.log('[Shopify Order API] Order not found with exact name. Retrying variations...');
+            if (orderName.startsWith('#')) {
+                // Try without '#'
+                const cleanName = orderName.substring(1);
+                order = await fetchOrder(cleanName);
+            } else {
+                // Try with '#'
+                const hashName = `#${orderName}`;
+                order = await fetchOrder(hashName);
+            }
         }
 
-        const orderData = await orderResponse.json();
-
-        if (!orderData.orders || orderData.orders.length === 0) {
+        if (!order) {
             return res.status(404).json({
                 success: false,
                 message: `Order "${orderName}" not found in Shopify.`
             });
         }
 
-        const order = orderData.orders[0];
         console.log('[Shopify Order API] Found order:', order.id, 'with', order.line_items.length, 'items');
 
         // 2. Map line items to include product images and variants
