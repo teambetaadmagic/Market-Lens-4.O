@@ -576,11 +576,18 @@ export const OrdersView: React.FC = () => {
             return;
         }
 
-        // Clean order name - Shopify orders often look like #1001 or 1001
+        // Clean order name - Shopify orders often look like #1001, #ML2687, 1001, ML2687, etc.
         let cleanedName = orderName.trim();
-        if (!cleanedName.startsWith('#') && /^\d+$/.test(cleanedName)) {
+        
+        // Remove any extra spaces or special characters (but keep # and alphanumeric)
+        cleanedName = cleanedName.replace(/\s+/g, '').toUpperCase();
+        
+        // Add # prefix if not present and if it doesn't start with #
+        if (!cleanedName.startsWith('#')) {
             cleanedName = `#${cleanedName}`;
         }
+        
+        console.log('[handleOrderScan] Cleaned order name:', cleanedName, 'from scanned:', orderName);
 
         // Check for duplicate order scan
         if (scannedOrderIds.has(cleanedName)) {
@@ -760,6 +767,10 @@ export const OrdersView: React.FC = () => {
             console.error("[handleOrderScan] Error message:", err?.message);
             console.error("[handleOrderScan] Error code:", err?.code);
             
+            // Get the selected store name for better error messages
+            const selectedStore = shopifyConfigs.find(s => s.id === selectedStoreId);
+            const storeName = selectedStore?.shopName || selectedStore?.shopifyDomain || 'Unknown Store';
+            
             let errorMsg = err.message || "Failed to process order. Try again.";
 
             // If we have our detailed multi-store summary, surface it directly
@@ -771,12 +782,16 @@ export const OrdersView: React.FC = () => {
                 // Provide specific error messages
                 if (errorMsg.includes('permission-denied')) {
                     errorMsg = "❌ Firestore permission denied. Check security rules.";
-                } else if (errorMsg.includes('not found')) {
-                    errorMsg = `❌ Order not found. Check the order number and try again.`;
+                } else if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+                    errorMsg = `❌ Order ${lastScannedBarcode} not found in ${storeName}.\n\nTry:\n• Check order number\n• Verify correct store selected`;
                 } else if (errorMsg.includes('No Shopify stores')) {
                     errorMsg = "❌ No Shopify stores connected. Add a store in Settings first.";
-                } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-                    errorMsg = "❌ Invalid Shopify access token. Check your credentials in Settings.";
+                } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized') || errorMsg.includes('Invalid access token')) {
+                    errorMsg = `❌ Invalid Shopify token for ${storeName}.\n\nPlease:\n• Verify store credentials\n• Regenerate access token`;
+                } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
+                    errorMsg = `❌ Permission denied for ${storeName}.\n\nPlease enable read_orders scope in Shopify app settings.`;
+                } else if (errorMsg.includes('timeout') || errorMsg.includes('408')) {
+                    errorMsg = `❌ Connection timeout for ${storeName}.\n\nTry scanning again.`;
                 }
             }
             
