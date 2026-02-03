@@ -943,9 +943,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     console.log('[fetchShopifyOrder] Searching for order:', orderName, 'across', shopifyConfigs.length, 'stores');
     console.log('[fetchShopifyOrder] Store list:', shopifyConfigs.map(c => `${c.shopName || c.shopifyDomain}`).join(', '));
 
-    const searchStore = async (config: ShopifyConfig) => {
+    const searchStore = async (config: ShopifyConfig, retryCount = 0) => {
+      const maxRetries = 2;
       try {
-        console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain}`);
+        console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain} (attempt ${retryCount + 1})`);
+        
+        // Add a request timeout of 45 seconds
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
           cache: 'no-store',
@@ -954,15 +960,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             accessToken: config.accessToken,
             shopifyDomain: config.shopifyDomain,
             orderName: orderName
-          })
+          }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
             console.log(`[fetchShopifyOrder] ✅ Order found in ${config.shopName || config.shopifyDomain}!`);
-            // Attach store metadata so downstream logic (PO creation, Firestore save)
-            // knows exactly which Shopify store this order came from.
             return {
               type: 'success',
               data: {
@@ -973,28 +980,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             };
           }
         } else {
-          // Treat 404 as a normal "not found in this store" so that
-          // other connected stores can still be checked cleanly.
           if (response.status === 404) {
             console.log(`[fetchShopifyOrder] Order not found in store ${config.shopName || config.shopifyDomain} (404)`);
             return { type: 'not_found', store: config.shopName || config.shopifyDomain };
+          } else if (response.status === 408 || response.status === 429 || response.status === 503) {
+            // Retry on timeout, rate limit, or service unavailable
+            if (retryCount < maxRetries) {
+              console.warn(`[fetchShopifyOrder] Retryable error ${response.status} from store ${config.shopName || config.shopifyDomain}, retrying...`);
+              await new Promise(r => setTimeout(r, 1000 * (retryCount + 1))); // Exponential backoff
+              return searchStore(config, retryCount + 1);
+            }
           }
 
-          // Capture specific HTTP errors (401, 403, etc.) as configuration issues.
           console.warn(
             `[fetchShopifyOrder] HTTP error from store ${config.shopName || config.shopifyDomain}:`,
             response.status
           );
           return { type: 'error', status: response.status, store: config.shopName || config.shopifyDomain };
         }
-      } catch (err) {
-        console.warn(`[fetchShopifyOrder] Failed to search in store ${config.shopifyDomain}:`, err);
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.warn(`[fetchShopifyOrder] Request timeout for store ${config.shopifyDomain}`);
+          // Retry on timeout
+          if (retryCount < maxRetries) {
+            console.warn(`[fetchShopifyOrder] Retrying store ${config.shopName || config.shopifyDomain} after timeout...`);
+            await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+            return searchStore(config, retryCount + 1);
+          }
+        } else {
+          console.warn(`[fetchShopifyOrder] Failed to search in store ${config.shopifyDomain}:`, err.message);
+        }
         return { type: 'error', message: String(err), store: config.shopName || config.shopifyDomain };
       }
       return { type: 'not_found' };
     };
 
-    // Search all stores concurrently
+    // Search all stores concurrently with timeout
     console.log(`[fetchShopifyOrder] executing ${shopifyConfigs.length} parallel requests...`);
     const results = await Promise.all(shopifyConfigs.map(config => searchStore(config)));
 
@@ -1003,6 +1024,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (successResult && successResult.type === 'success') {
       return successResult.data;
     }
+
+    // 2. If parallel search failed, try sequential search as fallback
+    console.warn('[fetchShopifyOrder] Parallel search failed, trying sequential search...');
+    for (const config of shopifyConfigs) {
+      const result = await searchStore(config);
+      if (result.type === 'success') {
+        return result.data;
+      }
+    }
+
 
     // 2. Build a detailed failure summary for better debugging in the UI
     const errorDetails = results.map((r: any, idx: number) => {

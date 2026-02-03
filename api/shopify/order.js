@@ -30,21 +30,43 @@ export default async function handler(req, res) {
         const cleanDomain = shopifyDomain.replace('.myshopify.com', '').trim();
         const fullDomain = `${cleanDomain}.myshopify.com`;
 
-        // 1. Find the order by name
+        // 1. Find the order by name with timeout handling
         const fetchOrder = async (searchParams) => {
             const searchUrl = `https://${fullDomain}/admin/api/2024-01/orders.json?${searchParams}&status=any`;
             console.log('[Shopify Order API] Searching with params:', searchParams, 'at', fullDomain);
-            const res = await fetch(searchUrl, {
-                method: 'GET',
-                cache: 'no-store',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken.trim(),
-                    'Content-Type': 'application/json',
-                },
-            });
-            if (!res.ok) return null;
-            const data = await res.json();
-            return (data.orders && data.orders.length > 0) ? data.orders[0] : null;
+            
+            try {
+                // Create an abort controller with 30-second timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
+                const res = await fetch(searchUrl, {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: controller.signal,
+                    headers: {
+                        'X-Shopify-Access-Token': accessToken.trim(),
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!res.ok) {
+                    console.warn(`[Shopify Order API] Non-OK response: ${res.status} from ${fullDomain}`);
+                    return null;
+                }
+                
+                const data = await res.json();
+                return (data.orders && data.orders.length > 0) ? data.orders[0] : null;
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.error(`[Shopify Order API] Request timeout for ${fullDomain}`);
+                } else {
+                    console.error(`[Shopify Order API] Fetch error for ${fullDomain}:`, err.message);
+                }
+                return null;
+            }
         };
 
         // 1. Try exact name match
