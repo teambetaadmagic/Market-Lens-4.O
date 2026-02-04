@@ -21,7 +21,7 @@ export const db = firebaseDb;
 export const saveShopifyOrder = async (orderData: any, shopName?: string, shopifyDomain?: string): Promise<string> => {
   try {
     const orderId = `order_${orderData.orderName}_${Date.now()}`;
-    
+
     // Calculate total price from line items if not provided
     let totalPrice = orderData.totalPrice;
     if (!totalPrice && orderData.lineItems && orderData.lineItems.length > 0) {
@@ -29,7 +29,7 @@ export const saveShopifyOrder = async (orderData: any, shopName?: string, shopif
         return sum + (parseFloat(item.price) * item.quantity);
       }, 0);
     }
-    
+
     const shopifyOrder: ShopifyOrder = {
       id: orderId,
       orderName: orderData.orderName,
@@ -91,7 +91,7 @@ export const createPurchaseOrder = async (poData: Omit<PurchaseOrder, 'id' | 'po
   try {
     const poId = `po_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const poNumber = `PO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-    
+
     const purchaseOrder: PurchaseOrder = {
       id: poId,
       poNumber,
@@ -158,7 +158,7 @@ export const addPurchaseOrderHistory = async (poId: string, action: string, deta
       history: Timestamp.increment(1),
       updatedAt: Timestamp.now().toMillis()
     });
-    
+
     // We'll append to history array in the StoreContext when fetching
     console.log('[Firestore] Added history entry to PO:', poId);
   } catch (error) {
@@ -194,9 +194,9 @@ export const recordProductSupplierAssignment = async (
   try {
     // Create a unique key combining productId, supplierId, and size
     const historyKey = `${productId}_${supplierId}_${size || 'no-size'}`;
-    
+
     const existingHistory = await getProductSupplierHistory(productId, supplierId, size);
-    
+
     if (existingHistory) {
       // Update existing record
       const docRef = doc(db, 'productSupplierHistory', historyKey);
@@ -215,11 +215,11 @@ export const recordProductSupplierAssignment = async (
         lastAssignedAt: Timestamp.now().toMillis(),
         assignmentCount: 1
       };
-      
+
       const docRef = doc(db, 'productSupplierHistory', historyKey);
       await setDoc(docRef, history);
     }
-    
+
     console.log('[Firestore] Recorded product-supplier assignment:', historyKey);
   } catch (error) {
     console.error('[Firestore] Error recording product-supplier assignment:', error);
@@ -238,7 +238,7 @@ export const getProductSupplierHistory = async (
   try {
     const historyKey = `${productId}_${supplierId}_${size || 'no-size'}`;
     const docRef = doc(db, 'productSupplierHistory', historyKey);
-    
+
     // This is a simple helper - actual fetching is done in StoreContext with onSnapshot
     return null; // Return null here, context will handle fetching
   } catch (error) {

@@ -128,13 +128,53 @@ export const OrdersView: React.FC = () => {
             const firstLog = logs[0];
             const supplier = suppliers.find(s => s.id === firstLog.supplierId);
 
-            const totalAmount = logs.reduce((sum, log) => {
+            // Group logs by image hash to combine same products from different orders
+            const logsByHash: Record<string, DailyLog[]> = {};
+            logs.forEach(log => {
+                const product = products.find(p => p.id === log.productId);
+                const hashKey = product?.imageHash || log.productId; // Use image hash if available, fallback to productId
+                if (!logsByHash[hashKey]) {
+                    logsByHash[hashKey] = [];
+                }
+                logsByHash[hashKey].push(log);
+            });
+
+            // Merge logs with same image hash into a single combined log
+            const mergedLogs = Object.entries(logsByHash).map(([hashKey, hashLogs]) => {
+                if (hashLogs.length === 1) {
+                    return hashLogs[0]; // If only one, return as is
+                }
+
+                // Combine quantities from multiple logs with same image hash
+                const combinedLog = { ...hashLogs[0] };
+                const combinedOrderedQty: Record<string, number> = {};
+                const combinedDispatchedQty: Record<string, number> = {};
+
+                hashLogs.forEach(log => {
+                    // Merge ordered quantities
+                    Object.entries(log.orderedQty).forEach(([size, qty]) => {
+                        combinedOrderedQty[size] = (combinedOrderedQty[size] || 0) + (qty || 0);
+                    });
+                    // Merge dispatched quantities
+                    Object.entries(log.dispatchedQty || {}).forEach(([size, qty]) => {
+                        combinedDispatchedQty[size] = (combinedDispatchedQty[size] || 0) + (qty || 0);
+                    });
+                });
+
+                combinedLog.orderedQty = combinedOrderedQty;
+                combinedLog.dispatchedQty = combinedDispatchedQty;
+                combinedLog.id = hashKey; // Use hash as the combined log ID for display
+
+                return combinedLog;
+            });
+
+            const totalAmount = mergedLogs.reduce((sum, log) => {
                 const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
                 return sum + (qty * (log.price || 0));
             }, 0);
 
             // Calculate remaining total qty (ordered - dispatched)
-            const totalQty = logs.reduce((sum, log) => {
+            const totalQty = mergedLogs.reduce((sum, log) => {
                 const remaining = Object.entries(log.orderedQty).reduce<number>((a, [k, v]) => {
                     const ordered = v || 0;
                     const dispatched = log.dispatchedQty?.[k] || 0;
@@ -148,7 +188,7 @@ export const OrdersView: React.FC = () => {
                 id: firstLog.supplierId || 'unknown',
                 phone: supplier?.phone,
                 tag: supplier?.tag,
-                logs: logs.sort((a, b) => (b.history[0]?.timestamp || 0) - (a.history[0]?.timestamp || 0)),
+                logs: mergedLogs.sort((a, b) => (b.history[0]?.timestamp || 0) - (a.history[0]?.timestamp || 0)),
                 totalAmount,
                 totalQty
             };
@@ -159,7 +199,7 @@ export const OrdersView: React.FC = () => {
             dateLabel: '',
             suppliers: supplierGroups.sort((a, b) => b.totalAmount - a.totalAmount)
         }];
-    }, [dailyLogs, suppliers]);
+    }, [dailyLogs, suppliers, products]);
 
     const grandTotalQty = useMemo(() => {
         return groupedOrders.reduce((acc, dateGroup) => {

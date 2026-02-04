@@ -34,7 +34,7 @@ export interface ActionHistory {
   action: string;
   timestamp: number;
   details?: string;
-  userId?: string; 
+  userId?: string;
 }
 
 export interface DailyLog {
@@ -42,16 +42,16 @@ export interface DailyLog {
   productId: string;
   supplierId?: string; // Optional
   date: string; // YYYY-MM-DD
-  
+
   hasSizes: boolean; // Toggle for dynamic sizing
-  
+
   // Quantities
   // If hasSizes=false, use a standard key like 'Total'
   orderedQty: Record<string, number>;      // Original order qty (never changes)
   pickedQty: Record<string, number>;       // Current picked qty (can change on revisit)
   dispatchedQty: Record<string, number>;   // Cumulative dispatched qty
   receivedQty: Record<string, number>;
-  
+
   price?: number; // Purchase price per unit
 
   status: LogStatus;

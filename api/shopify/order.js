@@ -39,7 +39,7 @@ export default async function handler(req, res) {
         try {
             // Simple and reliable: Fetch 50 most recent orders (sufficient for recent scans) and filter client-side
             console.log('[Shopify Order API] Fetching recent orders...');
-            
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
 
@@ -62,14 +62,14 @@ export default async function handler(req, res) {
                 console.error(`[Shopify Order API] Shopify API returned ${response.status}`);
                 const errorText = await response.text();
                 console.error('[Shopify Order API] Error:', errorText);
-                
+
                 if (response.status === 401) {
                     return res.status(401).json({
                         success: false,
                         message: 'Invalid access token or insufficient permissions'
                     });
                 }
-                
+
                 return res.status(response.status).json({
                     success: false,
                     message: `Shopify API error: ${response.status}`
@@ -90,13 +90,13 @@ export default async function handler(req, res) {
 
             // Clean search name - remove all non-alphanumeric characters
             const cleanSearchName = orderName.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-            
+
             // Search with multiple strategies for reliability
             order = data.orders.find(o => {
                 const oNameClean = o.name.toLowerCase().replace(/[^a-z0-9]/g, '');
                 // Match cleaned version or original version
-                return oNameClean === cleanSearchName || 
-                       o.name.toLowerCase() === orderName.toLowerCase();
+                return oNameClean === cleanSearchName ||
+                    o.name.toLowerCase() === orderName.toLowerCase();
             });
 
             if (!order) {
@@ -143,7 +143,7 @@ export default async function handler(req, res) {
                 // Fetch product to get image - parallelized with timeout
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 3000);
-                
+
                 const productUrl = `https://${fullDomain}/admin/api/2024-01/products/${item.product_id}.json`;
                 const productResponse = await fetch(productUrl, {
                     signal: controller.signal,
