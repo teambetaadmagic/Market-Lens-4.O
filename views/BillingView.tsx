@@ -274,6 +274,7 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
   onDelete
 }) => {
   const [editPrice, setEditPrice] = useState(billingEntry?.pricePerUnit.toString() || '');
+  const [isEditingPrice, setIsEditingPrice] = useState(!billingEntry);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -390,60 +391,71 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
       </div>
 
       {/* Pricing Section */}
-      {!billingEntry ? (
-        <div className="space-y-2 bg-blue-50 p-3 rounded-lg border border-blue-200">
-          <label className="text-xs font-bold text-gray-700 uppercase">Price Per Unit (₹)</label>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={editPrice}
-              onChange={(e) => setEditPrice(e.target.value)}
-              placeholder="0.00"
-              className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={!canEdit}
-            />
+      {isEditingPrice ? (
+        <div className="space-y-2 bg-blue-50 p-2 rounded-lg border border-blue-200">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="text-[10px] font-bold text-gray-700 uppercase block mb-1">Price Per Unit (₹)</label>
+              <input
+                type="number"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!canEdit}
+              />
+            </div>
             <button
               onClick={handleSavePrice}
               disabled={!canEdit || isSaving || !editPrice}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors"
             >
               {isSaving ? '...' : 'Save'}
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-2 bg-green-50 p-3 rounded-lg border border-green-200">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="text-xs font-bold text-gray-600 uppercase">Price per Unit</div>
-              <div className="text-lg font-bold text-gray-900">₹{billingEntry.pricePerUnit}</div>
-              <div className="text-xs text-gray-600 mt-1">Total: ₹{billingEntry.totalAmount}</div>
+        <div className="bg-green-50 p-2 rounded-lg border border-green-200">
+          <div className="flex justify-between items-center gap-2">
+            <div className="flex-1">
+              <div className="text-[10px] font-bold text-gray-600 uppercase">Price</div>
+              <div className="text-base font-bold text-gray-900">₹{billingEntry.pricePerUnit}</div>
             </div>
-
-            {/* GST Toggle */}
+            <div className="text-right">
+              <div className="text-[9px] text-gray-600">Total</div>
+              <div className="text-sm font-bold text-gray-900">₹{billingEntry.totalAmount}</div>
+            </div>
+            {canEdit && (
+              <button
+                onClick={() => setIsEditingPrice(true)}
+                className="text-blue-600 hover:text-blue-700 font-bold text-[10px] px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
+              >
+                Edit
+              </button>
+            )}
             <button
               onClick={handleToggleGST}
               disabled={!canEdit || isSaving}
-              className={`px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-1 transition-colors ${
+              className={`px-2 py-1.5 rounded font-bold text-[10px] flex items-center gap-0.5 transition-colors ${
                 billingEntry.gstEnabled
                   ? 'bg-amber-600 text-white hover:bg-amber-700'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               } disabled:opacity-50`}
               title="Toggle 5% GST"
             >
-              <Percent size={14} />
+              <Percent size={12} />
               GST
             </button>
           </div>
 
           {billingEntry.gstEnabled && (
-            <div className="text-xs bg-white p-2 rounded border border-amber-200">
-              <div className="flex justify-between mb-1">
+            <div className="text-[9px] bg-white p-1.5 rounded border border-amber-200 mt-2">
+              <div className="flex justify-between">
                 <span className="text-gray-600">GST (5%)</span>
                 <span className="font-bold text-amber-700">₹{billingEntry.gstAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold">
-                <span className="text-gray-900">Final Amount</span>
+                <span className="text-gray-900">Final</span>
                 <span className="text-green-700">₹{billingEntry.finalAmount.toFixed(2)}</span>
               </div>
             </div>
