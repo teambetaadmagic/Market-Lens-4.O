@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ChevronDown, ChevronUp, Check, Save, X, Clock, TrendingUp, Minus, Plus, Truck, Camera, Image as ImageIcon, History, Lock, Calendar, AlertCircle, Trash2, Info, Edit2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, Save, X, Clock, TrendingUp, Minus, Plus, Truck, Camera, Image as ImageIcon, History, Lock, Calendar, AlertCircle, Trash2, Info, Edit2, Send } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { DailyLog } from '../types';
 import { compressImage } from '../services/geminiService';
@@ -398,6 +398,7 @@ const SupplierGroup: React.FC<{
 }> = ({ supplierId, supplierName, logs, products, suppliers, onPickup, onDelete, canEdit, isAdmin }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isSendingPO, setIsSendingPO] = useState(false);
 
     // Calculate total pending quantity for this supplier (ordered - dispatched)
     const totalPendingQty = logs.reduce((acc: number, log) => {
@@ -432,6 +433,48 @@ const SupplierGroup: React.FC<{
         }
     };
 
+    const handleSendPO = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+
+        if (logs.length === 0) {
+            alert('No items to send');
+            return;
+        }
+
+        const supplier = suppliers.find(s => s.name === supplierName);
+        if (!supplier?.phone) {
+            alert('Supplier phone number not available');
+            return;
+        }
+
+        setIsSendingPO(true);
+        try {
+            // Format message with pending items
+            const itemsList = logs
+                .map(log => {
+                    const orderedTotal = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+                    const dispatchedTotal = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+                    const pending = Math.max(0, orderedTotal - dispatchedTotal);
+                    return pending > 0 ? `• ${pending} items pending` : null;
+                })
+                .filter(Boolean)
+                .slice(0, 5)
+                .join('\n');
+
+            const message = `*PICKUP ORDER*\nSupplier: ${supplierName}\nPending Items: ${logs.length}\nTotal Qty: ${totalPendingQty}\n\n${itemsList}\n\nReady for pickup.`;
+
+            // Open WhatsApp with message
+            const phone = supplier.phone.replace(/\D/g, '');
+            const whatsappUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+        } catch (error: any) {
+            console.error('Error sending PO:', error);
+            alert(`Error: ${error?.message || 'Could not send PO'}`);
+        } finally {
+            setIsSendingPO(false);
+        }
+    };
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
             {/* Header: Supplier Name with Quantity Badge */}
@@ -445,6 +488,16 @@ const SupplierGroup: React.FC<{
                         <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
                             {totalPendingQty} Items
                         </span>
+
+                        <button
+                            onClick={handleSendPO}
+                            disabled={isSendingPO}
+                            className="bg-green-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-green-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
+                            title="Send pickup order via WhatsApp"
+                        >
+                            {isSendingPO ? <span className="inline-block animate-spin">⏳</span> : <Send size={13} />}
+                            Send PO
+                        </button>
 
                         {isAdmin && (
                             <button
