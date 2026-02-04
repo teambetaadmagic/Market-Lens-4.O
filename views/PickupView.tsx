@@ -893,7 +893,7 @@ const SupplierGroup: React.FC<{
                                 title="Move all items to Next Day"
                             >
                                 <Calendar size={14} />
-                                Move Next Day
+                                 Next Day
                             </button>
                         )}
 
