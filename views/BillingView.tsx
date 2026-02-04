@@ -464,15 +464,15 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
       {billingEntry && (
         <>
           {/* Image Proofs */}
-          <div className="space-y-2">
-            {/* Supplier Bill Proof */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Vendor Bill Proof */}
             <button
               onClick={() => billProofInputRef.current?.click()}
               disabled={!canEdit || isUploading}
-              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               <Upload size={16} className="text-gray-400" />
-              <span className="text-sm font-bold text-gray-700">Proof</span>
+              <span className="text-sm font-bold text-gray-700">Vendor Bill</span>
               {billingEntry.supplierBillProof && (
                 <div className={`w-2.5 h-2.5 rounded-full ml-auto ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               )}
@@ -488,14 +488,14 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
               style={{ display: 'none' }}
             />
 
-            {/* Payment Proof */}
+            {/* Paid Proof */}
             <button
               onClick={() => paymentProofInputRef.current?.click()}
               disabled={!canEdit || isUploading}
-              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               <Upload size={16} className="text-gray-400" />
-              <span className="text-sm font-bold text-gray-700">Dispatch</span>
+              <span className="text-sm font-bold text-gray-700">Paid Proof</span>
               {billingEntry.paymentProof && (
                 <div className={`w-2.5 h-2.5 rounded-full ml-auto ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               )}
