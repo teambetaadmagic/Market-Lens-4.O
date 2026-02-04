@@ -551,7 +551,6 @@ const HistoryTab: React.FC<{
         </div>
     );
 };
-};
 
 const SupplierEditor: React.FC<{ current: string; suppliers: any[]; logId: string; updateLogSupplier: (logId: string, supplierName: string) => Promise<void> | void }> = ({ current, suppliers, logId, updateLogSupplier }) => {
     const [editing, setEditing] = useState(false);
