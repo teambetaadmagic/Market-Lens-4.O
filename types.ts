@@ -1,7 +1,7 @@
 
 export type Size = string; // Dynamic strings now
 
-export type UserRole = 'warehouse' | 'market_person' | 'admin';
+export type UserRole = 'warehouse' | 'market_person' | 'accountant' | 'admin';
 
 export interface User {
   id: string;
@@ -148,4 +148,41 @@ export interface AppState {
   dailyLogs: DailyLog[];
   shopifyOrders?: ShopifyOrder[]; // Optional for backward compatibility
   purchaseOrders?: PurchaseOrder[]; // Optional for backward compatibility
+}
+
+// ===== BILLING SYSTEM (ISOLATED) =====
+export interface BillingProof {
+  url: string;
+  uploadedAt: number;
+  uploadedBy?: string;
+}
+
+export interface BillingEntry {
+  id: string; // Unique billing ID
+  inwardLogId: string; // Reference to daily log (received_full or received_partial)
+  supplierId: string;
+  supplierName: string;
+  date: string; // YYYY-MM-DD of inward receipt
+  
+  // Read-only from inward (for reference only)
+  productId: string;
+  receivedQty: Record<string, number>; // Copy of what was received
+  totalReceivedQty: number; // Total received quantity
+  
+  // Billing fields
+  pricePerUnit: number; // Price set by accountant
+  totalAmount: number; // Calculated: totalReceivedQty * pricePerUnit
+  gstEnabled: boolean; // Toggle for GST
+  gstAmount: number; // Calculated: totalAmount * 0.05 if enabled
+  finalAmount: number; // Calculated: totalAmount + gstAmount
+  
+  // Proofs
+  supplierBillProof?: BillingProof; // Bill from supplier
+  paymentProof?: BillingProof; // Payment proof from us
+  
+  // Metadata
+  createdAt: number;
+  updatedAt: number;
+  updatedBy?: string; // Accountant who last updated
+  status: 'draft' | 'confirmed'; // draft until prices added, confirmed after
 }

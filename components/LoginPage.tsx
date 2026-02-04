@@ -11,6 +11,7 @@ interface LoginPageProps {
 const USERS = {
   'Neha': { password: 'Neha@01', role: 'warehouse' },
   'Sunil': { password: 'Sunil@001', role: 'market_person' },
+  'Krutika': { password: 'Krutika01', role: 'accountant' },
   'Admagic': { password: 'Admagic@2025', role: 'admin' },
 };
 

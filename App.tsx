@@ -8,6 +8,7 @@ import { PickupView } from './views/PickupView';
 import { WarehouseView } from './views/WarehouseView';
 import { SuppliersView } from './views/SuppliersView';
 import { AdminSettingsView } from './views/AdminSettingsView';
+import { BillingView } from './views/BillingView';
 import { isConfigured } from './firebaseConfig'; 
 import { Settings, AlertCircle, ShieldAlert, Database, CheckCircle2, WifiOff, X } from 'lucide-react';
 
@@ -174,6 +175,7 @@ const AppContent: React.FC = () => {
       case 'pickup': return <PickupView setView={setCurrentView} />;
       case 'warehouse': return <WarehouseView />;
       case 'suppliers': return <SuppliersView />;
+      case 'billing': return <BillingView />;
       case 'admin-settings': return <AdminSettingsView />;
       default: return <OrdersView />;
     }

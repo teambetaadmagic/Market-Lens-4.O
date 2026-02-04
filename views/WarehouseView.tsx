@@ -60,8 +60,7 @@ export const WarehouseView: React.FC = () => {
         supplierId: string, 
         supplierName: string, 
         logs: DailyLog[], 
-        totalQty: number, 
-        totalAmount: number 
+        totalQty: number
     }> = {};
 
     logs.forEach(log => {
@@ -72,18 +71,15 @@ export const WarehouseView: React.FC = () => {
                 supplierId: supId,
                 supplierName: s?.name || 'Unknown',
                 logs: [],
-                totalQty: 0,
-                totalAmount: 0
+                totalQty: 0
             };
         }
         
         // For incoming, we use pickedQty because that's what was dispatched
         const qty = (Object.values(log.pickedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-        const amt = qty * (log.price || 0);
         
         groups[supId].logs.push(log);
         groups[supId].totalQty += qty;
-        groups[supId].totalAmount += amt;
     });
 
     // Merge duplicate products within each supplier group (by image hash)
@@ -138,7 +134,7 @@ export const WarehouseView: React.FC = () => {
         };
     });
 
-    return mergedGroups.sort((a, b) => b.totalAmount - a.totalAmount);
+    return mergedGroups.sort((a, b) => b.totalQty - a.totalQty);
   }, [dailyLogs, suppliers]);
 
 
@@ -163,8 +159,7 @@ export const WarehouseView: React.FC = () => {
             dateLabel: string,
             logs: DailyLog[]
         }>,
-        totalQty: number,
-        totalAmount: number
+        totalQty: number
     }> = {};
 
     receivedLogs.forEach(log => {
@@ -175,8 +170,7 @@ export const WarehouseView: React.FC = () => {
                 supplierId: supId,
                 supplierName: s?.name || 'Unknown',
                 dateGroups: {},
-                totalQty: 0,
-                totalAmount: 0
+                totalQty: 0
             };
         }
         
@@ -193,11 +187,9 @@ export const WarehouseView: React.FC = () => {
         }
         
         const qty = (Object.values(log.receivedQty || {}) as number[]).reduce((a, b) => a + (b||0), 0);
-        const amt = qty * (log.price || 0);
         
         supplierGroups[supId].dateGroups[dateLabel].logs.push(log);
         supplierGroups[supId].totalQty += qty;
-        supplierGroups[supId].totalAmount += amt;
     });
 
     // Merge duplicate products within each date group (by image hash)
@@ -250,7 +242,7 @@ export const WarehouseView: React.FC = () => {
         };
     });
 
-    return mergedSupplierGroups.sort((a, b) => b.totalAmount - a.totalAmount);
+    return mergedSupplierGroups.sort((a, b) => b.totalQty - a.totalQty);
   }, [dailyLogs, suppliers, dateFilter, customDate]);
 
   const handleDeleteSupplierGroup = async (supplierName: string, logs: DailyLog[], e: React.MouseEvent) => {
@@ -341,11 +333,6 @@ export const WarehouseView: React.FC = () => {
                               <div className="font-bold text-gray-800 text-sm">{group.supplierName}</div>
                           </div>
                           <div className="flex items-center gap-2">
-                              {group.totalAmount > 0 && (
-                                  <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
-                                      ₹{group.totalAmount.toLocaleString()}
-                                  </span>
-                              )}
                               <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded-full border border-gray-200 text-gray-500">
                                   {group.totalQty} Items
                               </span>
@@ -399,9 +386,6 @@ export const WarehouseView: React.FC = () => {
                         <div className="mt-2 space-y-1 px-1">
                             <div className="text-sm font-bold text-gray-900">
                                 Total Pieces: <span className="text-blue-600">{historyGroups.reduce((sum, group) => sum + group.totalQty, 0)}</span>
-                            </div>
-                            <div className="text-sm font-bold text-gray-900">
-                                Total: ₹{historyGroups.reduce((sum, group) => sum + group.totalAmount, 0).toLocaleString('en-IN')}
                             </div>
                         </div>
                     </div>
@@ -500,12 +484,6 @@ export const WarehouseView: React.FC = () => {
                                        const dateKey = `${supplierGroup.supplierId}-${dateLabel}`;
                                        const isDateExpanded = expandedDates.has(dateKey);
                                        
-                                       // Calculate total amount for this date
-                                       const dateTotal = dateGroup.logs.reduce((sum, log) => {
-                                           const qty = (Object.values(log.receivedQty || {}) as number[]).reduce((a, b) => a + (b||0), 0);
-                                           return sum + (qty * (log.price || 0));
-                                       }, 0);
-                                       
                                        return (
                                            <div key={dateLabel}>
                                                {/* Date Header */}
@@ -574,9 +552,6 @@ export const WarehouseView: React.FC = () => {
                                                                            <div className="flex items-center gap-2">
                                                                                <span className="text-[9px] text-gray-500">{timeStr}</span>
                                                                                <span className="text-[9px] font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">Qty: {qty}</span>
-                                                                               {log.price && (
-                                                                                   <span className="text-[9px] font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">₹{log.price}</span>
-                                                                               )}
                                                                            </div>
                                                                            {sizeDetails && (
                                                                                <div className="text-[8px] text-gray-500 font-mono">{sizeDetails}</div>
@@ -875,11 +850,12 @@ const WarehouseItem: React.FC<{
     isAdmin: boolean;
 }> = ({ log, product, supplierName, supplierPhone, onVerify, onUpdateSupplier, onDelete, canEdit, isAdmin }) => {
     const { setPreviewImage } = useStore();
-    // Initialize received quantity to 0 for all picked items
+    // Initialize received quantity with existing receivedQty if available, otherwise 0
     const [received, setReceived] = useState<Record<string, number>>(() => {
         const initial: Record<string, number> = {};
         Object.keys(log.pickedQty).forEach(key => {
-            initial[key] = 0;
+            // CRITICAL FIX: Initialize with existing receivedQty if available
+            initial[key] = log.receivedQty?.[key] ?? 0;
         });
         return initial;
     });
@@ -911,10 +887,6 @@ const WarehouseItem: React.FC<{
     };
 
     // Mandatory Field State
-    // Initialize price even when it's 0. Treat undefined/null as missing.
-    const [price, setPrice] = useState<string>(log.price !== undefined && log.price !== null ? String(log.price) : '');
-    const [priceError, setPriceError] = useState(false);
-
     // Supplier mandatory check if unknown
     const isSupplierUnknown = supplierName === 'Unknown Supplier' || supplierName === 'Unknown';
     // If supplier is known but phone is missing
@@ -924,8 +896,6 @@ const WarehouseItem: React.FC<{
     const [missingSupPhone, setMissingSupPhone] = useState('');
     const [supError, setSupError] = useState(false);
     const [phoneError, setPhoneError] = useState(false);
-
-    const isPriceMissing = log.price === undefined || log.price === null;
 
     const handleSave = () => {
         // Check permission first
@@ -944,9 +914,7 @@ const WarehouseItem: React.FC<{
 
         if (hasError) return;
 
-        // Price and Phone are now optional
-        const finalPrice = price ? parseFloat(price) : undefined;
-        onVerify(received, finalPrice, missingSupName || undefined, missingSupPhone || undefined);
+        onVerify(received, undefined, missingSupName || undefined, missingSupPhone || undefined);
         setIsSaved(true);
     };
 
@@ -1165,7 +1133,7 @@ const WarehouseItem: React.FC<{
             </div>
 
             {/* OPTIONAL DETAILS SECTION */}
-            {(canEdit || isPriceMissing || isSupplierUnknown || isPhoneMissing) && (
+            {(canEdit || isSupplierUnknown || isPhoneMissing) && (
                 <div className="mb-4 bg-blue-50/50 p-3 rounded-xl border border-blue-100 animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-1 text-blue-800 mb-2">
                         <AlertTriangle size={12} />
@@ -1173,30 +1141,6 @@ const WarehouseItem: React.FC<{
                     </div>
                     
                     <div className="grid grid-cols-2 gap-2">
-                        {/* Price Input (editable by warehouse staff). If user cannot edit, show read-only price when present. */}
-                        {canEdit ? (
-                            <div className="relative">
-                                <div className="absolute left-2 top-2 text-gray-400"><Banknote size={12}/></div>
-                                <input 
-                                    type="number" 
-                                    disabled={!canEdit}
-                                    className={`w-full pl-6 pr-2 py-1.5 text-xs font-bold rounded-lg border focus:outline-none focus:ring-1 bg-white disabled:opacity-60 disabled:cursor-not-allowed ${priceError ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-200'}`}
-                                    placeholder="Price (₹)"
-                                    value={price}
-                                    onChange={(e) => { if(canEdit) setPrice(e.target.value); setPriceError(false); }}
-                                />
-                            </div>
-                        ) : (
-                            log.price !== undefined && log.price !== null && (
-                                <div className="relative">
-                                    <div className="absolute left-2 top-2 text-gray-400"><Banknote size={12}/></div>
-                                    <div className="w-full pl-6 pr-2 py-1.5 text-xs font-bold rounded-lg border bg-white">
-                                        ₹{String(log.price)}
-                                    </div>
-                                </div>
-                            )
-                        )}
-
                         {/* Supplier Name Input (if unknown) */}
                         {isSupplierUnknown && (
                             <div className="relative">

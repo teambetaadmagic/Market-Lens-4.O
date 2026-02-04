@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, Package, Warehouse, Users, Settings } from 'lucide-react';
+import { ShoppingBag, Package, Warehouse, Users, Settings, FileText } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
  
 interface NavigationProps {
@@ -16,6 +16,8 @@ interface NavItem {
 export const Navigation: React.FC<NavigationProps> = ({ currentView, setView }) => {
   const { user } = useStore();
   const isAdmin = user?.role === 'admin';
+  const isAccountant = user?.role === 'accountant';
+  const canBill = isAdmin || isAccountant;
 
   const navItems: NavItem[] = [
     { id: 'orders', label: 'Purchase', icon: ShoppingBag },
@@ -24,13 +26,16 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, setView }) 
     { id: 'suppliers', label: 'Suppliers', icon: Users },
   ];
 
+  // Add billing tab for accountants and admins
+  const withBilling = canBill ? [...navItems, { id: 'billing', label: 'Bills', icon: FileText }] : navItems;
+
   // Add settings tab only for admin users
-  const adminNavItems = isAdmin ? [...navItems, { id: 'admin-settings', label: 'Settings', icon: Settings }] : navItems;
+  const finalNavItems = isAdmin ? [...withBilling, { id: 'admin-settings', label: 'Settings', icon: Settings }] : withBilling;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 mx-auto max-w-md bg-white/95 backdrop-blur-md border-t border-gray-200 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
       <div className="flex justify-between items-center h-16 px-2">
-        {adminNavItems.map((item) => {
+        {finalNavItems.map((item) => {
           const isActive = currentView === item.id;
           return (
             <button

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { AppState, DailyLog, ProductMaster, Supplier, PreviewMetadata, User, UserRole, ShopifyOrder, PurchaseOrder, ProductSupplierHistory } from '../types';
+import { AppState, DailyLog, ProductMaster, Supplier, PreviewMetadata, User, UserRole, ShopifyOrder, PurchaseOrder, ProductSupplierHistory, BillingEntry } from '../types';
 import { db } from '../firebaseConfig';
 import {
   collection,
@@ -76,6 +76,13 @@ interface StoreContextType extends AppState {
   mergeLogsManual: (sourceLogId: string, targetLogId: string) => Promise<void>;
   fetchShopifyOrder: (orderName: string) => Promise<any>;
   getMostRecentSupplierForProduct: (productId: string) => ProductSupplierHistory | null;
+
+  // Billing functions (accountant-only)
+  billingEntries?: any[]; // BillingEntry[]
+  createOrUpdateBillingEntry: (inwardLogId: string, pricePerUnit: number, gstEnabled?: boolean) => Promise<string>;
+  uploadBillingProof: (billingId: string, proofType: 'bill' | 'payment', imageBase64: string) => Promise<void>;
+  updateBillingGST: (billingId: string, gstEnabled: boolean) => Promise<void>;
+  deleteBillingEntry: (billingId: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -130,11 +137,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [productSupplierHistory, setProductSupplierHistory] = useState<ProductSupplierHistory[]>([]);
+  const [billingEntries, setBillingEntries] = useState<BillingEntry[]>([]);
 
   // Mock user database
   const USERS: Record<string, { password: string; role: UserRole }> = {
     'Neha': { password: 'Neha@01', role: 'warehouse' },
     'Sunil': { password: 'Sunil@001', role: 'market_person' },
+    'Krutika': { password: 'Krutika01', role: 'accountant' },
     'Admagic': { password: 'Admagic@2025', role: 'admin' },
   };
 
@@ -335,6 +344,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.log('[Product-Supplier History] Loaded from Firestore:', history.length, 'records');
       }, handleError);
 
+      // Subscribe to Billing Entries from Firestore
+      const unsubBillingEntries = onSnapshot(collection(db, 'billingEntries'), (snapshot) => {
+        const entries = snapshot.docs.map(doc => doc.data() as BillingEntry);
+        setBillingEntries(entries);
+        console.log('[Billing Entries] Loaded from Firestore:', entries.length, 'entries');
+      }, handleError);
+
       // Set a timeout for initialization - if not initialized after 10 seconds, mark as initialized anyway
       const initTimeout = setTimeout(() => {
         console.warn('[StoreContext] Initialization timeout - marking as initialized after 10s');
@@ -351,6 +367,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           unsubShopifyOrders();
           unsubPurchaseOrders();
           unsubProductHistory();
+          unsubBillingEntries();
         } catch (e) {
           console.error('[StoreContext] Failed to cleanup listeners:', e);
         }
@@ -804,12 +821,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // 3. Update Log
     // Calculate if this is a full or partial receipt
-    const totalPicked = Object.values(currentLog.pickedQty).reduce((sum: number, qty: number) => sum + qty, 0);
-    const totalReceived = Object.values(received).reduce((sum: number, qty: number) => sum + qty, 0);
-    
+    const totalPicked = Object.values(currentLog.pickedQty || {}).reduce((sum: number, qty: any) => sum + (Number(qty) || 0), 0);
+    const totalReceived = Object.values(received || {}).reduce((sum: number, qty: any) => sum + (Number(qty) || 0), 0);
+
     // CRITICAL FIX: Set status based on whether all picked quantity was received
     const receiptStatus = totalReceived >= totalPicked ? 'received_full' : 'received_partial';
-    
+
     const logUpdates: any = {
       receivedQty: received,
       status: receiptStatus,
@@ -959,7 +976,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
-        
+
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
           cache: 'no-store',
@@ -1014,11 +1031,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const maxRetries = 2;
       try {
         console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain} (attempt ${retryCount + 1})`);
-        
+
         // Add a request timeout of 15 seconds (faster fail)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
+
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
           cache: 'no-store',
@@ -1155,6 +1172,129 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
+  // ===== BILLING FUNCTIONS =====
+  const createOrUpdateBillingEntry = useCallback(async (
+    inwardLogId: string,
+    pricePerUnit: number,
+    gstEnabled: boolean = false
+  ): Promise<string> => {
+    try {
+      // Find the inward log
+      const inwardLog = data.dailyLogs.find(l => l.id === inwardLogId);
+      if (!inwardLog || !['received_full', 'received_partial'].includes(inwardLog.status)) {
+        throw new Error('Invalid inward log - must be received status');
+      }
+
+      // Calculate totals
+      const totalReceivedQty = Object.values(inwardLog.receivedQty || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+      const totalAmount = totalReceivedQty * pricePerUnit;
+      const gstAmount = gstEnabled ? totalAmount * 0.05 : 0;
+      const finalAmount = totalAmount + gstAmount;
+
+      // Check if billing entry already exists for this log
+      const existing = billingEntries.find(b => b.inwardLogId === inwardLogId);
+      const billingId = existing?.id || `billing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const billingData: BillingEntry = {
+        id: billingId,
+        inwardLogId,
+        supplierId: inwardLog.supplierId || 'unknown',
+        supplierName: data.suppliers.find(s => s.id === inwardLog.supplierId)?.name || 'Unknown',
+        date: inwardLog.date,
+        productId: inwardLog.productId,
+        receivedQty: inwardLog.receivedQty,
+        totalReceivedQty,
+        pricePerUnit,
+        totalAmount,
+        gstEnabled,
+        gstAmount,
+        finalAmount,
+        createdAt: existing?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: user?.username,
+        status: 'draft',
+        ...(existing && { supplierBillProof: existing.supplierBillProof, paymentProof: existing.paymentProof })
+      };
+
+      const ref = doc(db, 'billingEntries', billingId);
+      await setDoc(ref, billingData);
+      console.log('[Billing] Created/updated entry:', billingId);
+      return billingId;
+    } catch (error) {
+      console.error('[Billing] Failed to create/update entry:', error);
+      throw error;
+    }
+  }, [data.dailyLogs, data.suppliers, billingEntries, user?.username]);
+
+  const uploadBillingProof = useCallback(async (
+    billingId: string,
+    proofType: 'bill' | 'payment',
+    imageBase64: string
+  ): Promise<void> => {
+    try {
+      const entry = billingEntries.find(b => b.id === billingId);
+      if (!entry) throw new Error('Billing entry not found');
+
+      const proof = {
+        url: imageBase64,
+        uploadedAt: Date.now(),
+        uploadedBy: user?.username
+      };
+
+      const ref = doc(db, 'billingEntries', billingId);
+      const field = proofType === 'bill' ? 'supplierBillProof' : 'paymentProof';
+
+      await updateDoc(ref, {
+        [field]: proof,
+        updatedAt: Date.now(),
+        updatedBy: user?.username
+      });
+
+      console.log('[Billing] Uploaded', proofType, 'proof:', billingId);
+    } catch (error) {
+      console.error('[Billing] Failed to upload proof:', error);
+      throw error;
+    }
+  }, [billingEntries, user?.username]);
+
+  const updateBillingGST = useCallback(async (
+    billingId: string,
+    gstEnabled: boolean
+  ): Promise<void> => {
+    try {
+      const entry = billingEntries.find(b => b.id === billingId);
+      if (!entry) throw new Error('Billing entry not found');
+
+      const gstAmount = gstEnabled ? entry.totalAmount * 0.05 : 0;
+      const finalAmount = entry.totalAmount + gstAmount;
+
+      const ref = doc(db, 'billingEntries', billingId);
+      await updateDoc(ref, {
+        gstEnabled,
+        gstAmount,
+        finalAmount,
+        updatedAt: Date.now(),
+        updatedBy: user?.username
+      });
+
+      console.log('[Billing] Updated GST:', billingId, gstEnabled);
+    } catch (error) {
+      console.error('[Billing] Failed to update GST:', error);
+      throw error;
+    }
+  }, [billingEntries, user?.username]);
+
+  const deleteBillingEntry = useCallback(async (billingId: string): Promise<void> => {
+    try {
+      const ref = doc(db, 'billingEntries', billingId);
+      await deleteDoc(ref);
+      console.log('[Billing] Deleted entry:', billingId);
+    } catch (error) {
+      console.error('[Billing] Failed to delete entry:', error);
+      throw error;
+    }
+  }, []);
+
   return (
     <StoreContext.Provider value={{
       ...data,
@@ -1198,7 +1338,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       findProductByHash,
       mergeLogsManual,
       fetchShopifyOrder,
-      getMostRecentSupplierForProduct
+      getMostRecentSupplierForProduct,
+
+      // Billing functions
+      billingEntries,
+      createOrUpdateBillingEntry,
+      uploadBillingProof,
+      updateBillingGST,
+      deleteBillingEntry
     }}>
       {children}
     </StoreContext.Provider>

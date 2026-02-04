@@ -28,7 +28,6 @@ export const OrdersView: React.FC = () => {
     // Options
     const [description, setDescription] = useState("");
     const [hasSizes, setHasSizes] = useState(false);
-    const [price, setPrice] = useState('');
 
     // Store Selection State
     const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -168,11 +167,6 @@ export const OrdersView: React.FC = () => {
                 return combinedLog;
             });
 
-            const totalAmount = mergedLogs.reduce((sum, log) => {
-                const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-                return sum + (qty * (log.price || 0));
-            }, 0);
-
             // Calculate remaining total qty (ordered - dispatched)
             const totalQty = mergedLogs.reduce((sum, log) => {
                 const remaining = Object.entries(log.orderedQty).reduce<number>((a, [k, v]) => {
@@ -189,15 +183,14 @@ export const OrdersView: React.FC = () => {
                 phone: supplier?.phone,
                 tag: supplier?.tag,
                 logs: mergedLogs.sort((a, b) => (b.history[0]?.timestamp || 0) - (a.history[0]?.timestamp || 0)),
-                totalAmount,
                 totalQty
             };
         });
 
-        // Return as single group with all suppliers sorted by total amount
+        // Return as single group with all suppliers sorted by total qty
         return [{
             dateLabel: '',
-            suppliers: supplierGroups.sort((a, b) => b.totalAmount - a.totalAmount)
+            suppliers: supplierGroups.sort((a, b) => b.totalQty - a.totalQty)
         }];
     }, [dailyLogs, suppliers, products]);
 
@@ -269,9 +262,6 @@ export const OrdersView: React.FC = () => {
                             setSupplierPhone(lastSup.phone || "");
                         }
                     }
-                    if (existing.lastPrice !== undefined) {
-                        setPrice(existing.lastPrice.toString());
-                    }
                 } else {
                     // New Item - Manual Entry (AI Removed)
                     setDescription("Item");
@@ -338,7 +328,6 @@ export const OrdersView: React.FC = () => {
 
         try {
             setIsSaving(true);
-            const priceVal = price ? parseFloat(price) : undefined;
             console.log('[handleSave] Calling addOrUpdateDailyLog with:', { description, quantities: cleanQuantities, supplierInput });
             await addOrUpdateDailyLog(
                 draftImage,
@@ -347,7 +336,7 @@ export const OrdersView: React.FC = () => {
                 hasSizes,
                 supplierInput || undefined,
                 description || "Item",
-                priceVal,
+                undefined,
                 supplierPhone || undefined
             );
             console.log('[handleSave] Successfully saved!');
@@ -365,7 +354,6 @@ export const OrdersView: React.FC = () => {
                 setQuantities({ '': '' });
                 setTotalQty('');
                 setHasSizes(false);
-                setPrice('');
                 setDescription('');
             }
         } catch (e: any) {
@@ -977,17 +965,6 @@ export const OrdersView: React.FC = () => {
                     qtyText = `Qty: ${totalItemQty}`;
                 }
                 ctx.fillText(qtyText, TEXT_X, thumbY + 70);
-                if (log.price) {
-                    const amount = totalItemQty * log.price;
-                    ctx.textAlign = 'right';
-                    ctx.fillStyle = '#111827';
-                    ctx.font = 'bold 28px sans-serif';
-                    ctx.fillText(`₹${amount.toLocaleString()}`, WIDTH - PADDING, thumbY + 35);
-                    ctx.fillStyle = '#6B7280';
-                    ctx.font = '22px sans-serif';
-                    ctx.fillText(`@ ₹${log.price}`, WIDTH - PADDING, thumbY + 70);
-                    ctx.textAlign = 'left';
-                }
                 currentY += ITEM_HEIGHT;
             });
             ctx.fillStyle = '#F9FAFB';
@@ -998,13 +975,6 @@ export const OrdersView: React.FC = () => {
             ctx.strokeStyle = '#E5E7EB';
             ctx.lineWidth = 2;
             ctx.stroke();
-            ctx.fillStyle = '#111827';
-            ctx.font = 'bold 36px sans-serif';
-            ctx.fillText('Grand Total', PADDING, currentY + 75);
-            ctx.textAlign = 'right';
-            ctx.fillStyle = '#059669';
-            ctx.font = 'bold 42px sans-serif';
-            ctx.fillText(`₹${totalAmount.toLocaleString()}`, WIDTH - PADDING, currentY + 75);
             setPoImage(canvas.toDataURL('image/jpeg', 0.8));
         } catch (e) {
             console.error("Failed to generate receipt", e);
@@ -1313,13 +1283,7 @@ export const OrdersView: React.FC = () => {
             totalItemsQty += Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
         });
 
-        // Calculate total amount
-        const totalAmount = logs.reduce((sum, log) => {
-            const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-            return sum + (qty * (log.price || 0));
-        }, 0);
-
-        const message = `*PURCHASE ORDER*\nDate: ${getTodayDate()}\nSupplier: ${vendorName}\nTotal Items: ${totalItemsQty}\nTotal Amount: ₹${totalAmount.toLocaleString()}\n\nImages attached above 👆`;
+        const message = `*PURCHASE ORDER*\nDate: ${getTodayDate()}\nSupplier: ${vendorName}\nTotal Items: ${totalItemsQty}\n\nImages attached above 👆`;
 
         // Collect WATERMARKED images for all items (with aspect ratio preserved)
         const images: { blob: Blob; filename: string; mimeType: string }[] = [];
@@ -1910,20 +1874,6 @@ export const OrdersView: React.FC = () => {
                                         </label>
                                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sizes</span>
                                     </div>
-
-                                    {/* Price Input */}
-                                    <div className="flex-1 flex items-center relative">
-                                        <div className="absolute left-3 text-gray-400">
-                                            <Banknote size={16} />
-                                        </div>
-                                        <input
-                                            type="number"
-                                            className="w-full pl-9 pr-3 py-1.5 bg-gray-100 rounded-xl text-sm font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                            placeholder="Price"
-                                            value={price}
-                                            onChange={e => setPrice(e.target.value)}
-                                        />
-                                    </div>
                                 </div>
 
                                 {/* Quantities Area */}
@@ -2121,7 +2071,6 @@ export const OrdersView: React.FC = () => {
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-xs text-gray-700">
                                                             Qty: <span className="font-bold">{qty}</span>
-                                                            {log.price && <span className="ml-2 text-gray-500">@ ₹{log.price}</span>}
                                                         </p>
                                                         <p className="text-[10px] text-gray-400">
                                                             {new Date(log.history[0]?.timestamp || 0).toLocaleString()}
@@ -2933,7 +2882,6 @@ const EditableLogItem: React.FC<{
     const [isEditing, setIsEditing] = useState(false);
 
     // Edit State
-    const [editPrice, setEditPrice] = useState(log.price?.toString() || '');
     const [editQtys, setEditQtys] = useState<Record<string, string>>(() => {
         const initial: Record<string, string> = {};
         Object.entries(log.orderedQty).forEach(([k, v]) => initial[k] = v.toString());
@@ -3047,16 +2995,6 @@ const EditableLogItem: React.FC<{
                     </div>
                     <div className="flex-1 space-y-3">
                         <div className="flex items-center gap-3">
-                            <div className="relative flex-1">
-                                <Banknote size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
-                                <input
-                                    className="w-full pl-8 pr-2 py-1.5 border border-blue-200 rounded-lg text-sm bg-white"
-                                    placeholder="Price"
-                                    type="number"
-                                    value={editPrice}
-                                    onChange={e => setEditPrice(e.target.value)}
-                                />
-                            </div>
                             <div className="flex items-center gap-2">
                                 <label className="relative inline-flex items-center cursor-pointer scale-[0.6] origin-left">
                                     <input type="checkbox" checked={hasSizes} onChange={e => {
@@ -3164,14 +3102,6 @@ const EditableLogItem: React.FC<{
                 </div>
 
                 <div className="flex justify-between items-end">
-                    <div className="pb-0.5">
-                        {log.price ? (
-                            <div className="text-sm font-bold text-gray-700">
-                                ₹{log.price}
-                            </div>
-                        ) : null}
-                    </div>
-
                     <div className="flex items-center gap-3">
                         <div className="flex items-baseline gap-1">
                             <span className="text-xs font-medium text-gray-500">Qty</span>
