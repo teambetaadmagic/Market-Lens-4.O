@@ -1215,7 +1215,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const existing = billingEntries.find(b => b.inwardLogId === inwardLogId);
       const billingId = existing?.id || `billing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      const billingData: BillingEntry = {
+      const billingData: any = {
         id: billingId,
         inwardLogId,
         supplierId: inwardLog.supplierId || 'unknown',
@@ -1232,9 +1232,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createdAt: existing?.createdAt || Date.now(),
         updatedAt: Date.now(),
         updatedBy: user?.username,
-        status: 'draft',
-        ...(existing && { supplierBillProof: existing.supplierBillProof, paymentProof: existing.paymentProof })
+        status: 'draft'
       };
+
+      // Only add proofs if they exist in the existing entry
+      if (existing?.supplierBillProof) {
+        billingData.supplierBillProof = existing.supplierBillProof;
+      }
+      if (existing?.paymentProof) {
+        billingData.paymentProof = existing.paymentProof;
+      }
 
       const ref = doc(db, 'billingEntries', billingId);
       await setDoc(ref, billingData);
