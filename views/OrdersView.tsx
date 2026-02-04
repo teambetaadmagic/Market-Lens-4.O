@@ -970,7 +970,7 @@ export const OrdersView: React.FC = () => {
                 let totalItemQty = 0;
                 if (log.hasSizes) {
                     const parts = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`);
-                    qtyText = parts.join('  ');
+                    qtyText = parts.join(', '); // Changed from '  ' to ', ' for comma separator
                     totalItemQty = Object.values(log.orderedQty).reduce<number>((a, b) => a + (Number(b) || 0), 0);
                 } else {
                     totalItemQty = log.orderedQty['Total'] || 0;
@@ -1172,7 +1172,7 @@ export const OrdersView: React.FC = () => {
                     let line1 = `Total Qty: ${totalQty}`;
                     let line2 = "";
                     if (log.hasSizes) {
-                        line2 = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join('  ');
+                        line2 = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join(', ');
                     }
 
                     const centerX = canvasWidth / 2; // canvas center
@@ -2983,14 +2983,13 @@ const EditableLogItem: React.FC<{
         let totalQty = 0;
 
         if (log.hasSizes) {
-            sizeDetails = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join('  ');
+            sizeDetails = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join(', '); // Changed to comma separator
             totalQty = (Object.values(log.orderedQty) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
         } else {
             totalQty = log.orderedQty['Total'] || 0;
         }
 
         setPreviewImage(product.imageUrl, {
-            title: displayDescription,
             qty: `Qty: ${totalQty}`,
             sizeDetails: sizeDetails,
             price: log.price ? `₹${log.price}` : undefined,
