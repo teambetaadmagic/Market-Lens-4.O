@@ -1070,13 +1070,13 @@ const WarehouseItem: React.FC<{
 
                     <div className="font-bold text-gray-900 text-xs mt-0.5 line-clamp-1">{product.description}</div>
                     
-                    {/* Display Note if exists */}
-                    {log.notes && (
+                    {/* Display Note if exists - HIDDEN FOR CLEANER UI */}
+                    {/* {log.notes && (
                         <div className="mt-2 flex items-start gap-2 bg-yellow-50 text-yellow-800 p-2 rounded-lg text-[10px] border border-yellow-100">
                             <AlertCircle size={12} className="mt-0.5 shrink-0" />
                             <span className="font-medium">{log.notes}</span>
                         </div>
-                    )}
+                    )} */}
                     
                     {/* Pickup Proof Image */}
                     {log.pickupProofUrl && (

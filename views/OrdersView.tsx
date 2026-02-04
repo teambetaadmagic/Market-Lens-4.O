@@ -746,7 +746,7 @@ export const OrdersView: React.FC = () => {
                             itemQtys,
                             hasSizes,
                             autoAssignedSupplierName, // auto-assigned supplier
-                            '', // Empty description - no need to show item name
+                            'Item', // Default description without order reference
                             undefined, // NO price
                             undefined // no supplier phone
                         );
