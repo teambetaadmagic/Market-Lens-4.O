@@ -118,7 +118,7 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
 
                 combinedLog.orderedQty = combinedOrderedQty;
                 combinedLog.dispatchedQty = combinedDispatchedQty;
-                combinedLog.id = hashKey; // Use hash as the combined log ID for display
+                // Keep original log ID for dispatch operations - don't use hash
 
                 return combinedLog;
             });
@@ -761,11 +761,6 @@ const PickupItem: React.FC<{
                             )}
                         </div>
                     </div>
-
-                    {/* Show product description subtly if needed, though instruction was to replace it */}
-                    {product?.description && product.description !== 'Item' && (
-                        <div className="text-[10px] text-gray-500 font-medium line-clamp-1">{product.description}</div>
-                    )}
                 </div>
             </div>
 
