@@ -454,20 +454,20 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
       {billingEntry && (
         <>
           {/* Image Proofs */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             {/* Supplier Bill Proof */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-bold text-gray-700">Bill Proof</div>
-                <div className={`w-3 h-3 rounded-full ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] font-bold text-gray-700">Bill Proof</div>
+                <div className={`w-2.5 h-2.5 rounded-full ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               </div>
 
               {billingEntry.supplierBillProof ? (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <img
                     src={billingEntry.supplierBillProof.url}
                     alt="bill"
-                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                    className="w-full h-16 object-cover rounded-lg border border-gray-200"
                   />
                   <button
                     onClick={() => {
@@ -483,7 +483,7 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
                       }
                     }}
                     disabled={!canEdit || isUploading}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                    className="text-[9px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
                   >
                     Replace
                   </button>
@@ -492,10 +492,10 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
                 <button
                   onClick={() => billProofInputRef.current?.click()}
                   disabled={!canEdit || isUploading}
-                  className="w-full flex flex-col items-center gap-1 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
+                  className="w-full flex flex-col items-center gap-0.5 py-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
                 >
-                  <Upload size={16} />
-                  <span className="text-[10px]">Upload</span>
+                  <Upload size={14} />
+                  <span className="text-[9px]">Upload</span>
                 </button>
               )}
               <input
@@ -511,18 +511,18 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
             </div>
 
             {/* Payment Proof */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-bold text-gray-700">Payment</div>
-                <div className={`w-3 h-3 rounded-full ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] font-bold text-gray-700">Payment</div>
+                <div className={`w-2.5 h-2.5 rounded-full ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               </div>
 
               {billingEntry.paymentProof ? (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <img
                     src={billingEntry.paymentProof.url}
                     alt="payment"
-                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                    className="w-full h-16 object-cover rounded-lg border border-gray-200"
                   />
                   <button
                     onClick={() => {
@@ -538,7 +538,7 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
                       }
                     }}
                     disabled={!canEdit || isUploading}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                    className="text-[9px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
                   >
                     Replace
                   </button>
@@ -547,10 +547,10 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
                 <button
                   onClick={() => paymentProofInputRef.current?.click()}
                   disabled={!canEdit || isUploading}
-                  className="w-full flex flex-col items-center gap-1 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
+                  className="w-full flex flex-col items-center gap-0.5 py-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
                 >
-                  <Upload size={16} />
-                  <span className="text-[10px]">Upload</span>
+                  <Upload size={14} />
+                  <span className="text-[9px]">Upload</span>
                 </button>
               )}
               <input
