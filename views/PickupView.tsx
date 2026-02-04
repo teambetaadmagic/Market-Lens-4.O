@@ -560,15 +560,19 @@ const SupplierGroup: React.FC<{
 
         setIsSendingPO(true);
         try {
-            // Calculate total pending quantity
-            let totalPendingQty = 0;
+            // Calculate total items quantity (sum of all ordered quantities)
+            let totalItemsQty = 0;
             logs.forEach(log => {
-                const orderedTotal = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-                const dispatchedTotal = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-                totalPendingQty += Math.max(0, orderedTotal - dispatchedTotal);
+                totalItemsQty += Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
             });
 
-            const message = `*PICKUP ORDER*\nDate: ${getTodayDate()}\nSupplier: ${supplierName}\nTotal Items: ${logs.length}\nTotal Qty: ${totalPendingQty}\n\nImages attached above 👆`;
+            // Calculate total amount (sum of qty * price)
+            const totalAmount = logs.reduce((sum, log) => {
+                const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                return sum + (qty * (log.price || 0));
+            }, 0);
+
+            const message = `*PICKUP ORDER*\nDate: ${getTodayDate()}\nSupplier: ${supplierName}\nTotal Items: ${totalItemsQty}\nTotal Amount: ₹${totalAmount.toLocaleString()}\n\nImages attached above 👆`;
 
             // Generate watermarked images
             const images: { blob: Blob; filename: string; mimeType: string }[] = [];
@@ -598,7 +602,7 @@ const SupplierGroup: React.FC<{
                 return;
             }
 
-            // Try native share API first
+            // Try native share API first (works on mobile and some desktop browsers)
             if (navigator.share) {
                 try {
                     const files = images.map(({ blob, filename, mimeType }) =>
@@ -611,9 +615,11 @@ const SupplierGroup: React.FC<{
                     };
 
                     if (navigator.canShare && navigator.canShare(shareData)) {
+                        // Native share with files
                         await navigator.share(shareData);
                         return;
                     } else if (files.length > 0 && navigator.canShare({ files: [files[0]] })) {
+                        // Try sharing just the first image
                         await navigator.share({
                             title: `Pickup: ${supplierName}`,
                             files: [files[0]]
@@ -628,22 +634,34 @@ const SupplierGroup: React.FC<{
                 }
             }
 
-            // Fallback to WhatsApp Web with clipboard
-            const phoneNumber = supplier.phone.replace(/[^0-9]/g, '');
+            // If phone is available, open WhatsApp Web
+            if (supplier.phone) {
+                const phoneNumber = supplier.phone.replace(/[^0-9]/g, '');
 
-            // Copy first image to clipboard
-            try {
-                const firstImage = images[0];
-                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': firstImage.blob })]);
-                alert(`Images copied! Click OK to open WhatsApp for ${supplierName}.\nPaste the images in the chat.`);
-            } catch (e) {
-                console.error("Copy to clipboard failed", e);
+                // Copy first image to clipboard
+                try {
+                    const firstImage = images[0];
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': firstImage.blob })]);
+                    alert(`Images copied! Click OK to open WhatsApp for ${supplierName}.\nPaste the images in the chat.`);
+                } catch (e) {
+                    console.error("Copy to clipboard failed", e);
+                }
+
+                // Open WhatsApp Web with pre-filled message
+                const encodedMessage = encodeURIComponent(message);
+                const whatsappLink = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+                window.open(whatsappLink, '_blank');
+            } else {
+                // No phone available - copy first image to clipboard and prompt user
+                try {
+                    const firstImage = images[0];
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': firstImage.blob })]);
+                    alert(`Images copied for ${supplierName}!\n\nNo phone number available.\n\nYou can:\n1. Paste images in your messaging app\n2. Add a phone number to this supplier to enable WhatsApp sharing`);
+                } catch (e) {
+                    console.error("Copy to clipboard failed", e);
+                    alert(`Unable to copy images. Please add a phone number for ${supplierName} to send via WhatsApp.`);
+                }
             }
-
-            // Open WhatsApp Web with pre-filled message
-            const encodedMessage = encodeURIComponent(message);
-            const whatsappLink = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
-            window.open(whatsappLink, '_blank');
         } catch (error: any) {
             console.error('Error sending PO:', error);
             alert(`Error: ${error?.message || 'Could not send PO'}`);
