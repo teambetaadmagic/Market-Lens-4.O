@@ -803,10 +803,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // 3. Update Log
+    // Calculate if this is a full or partial receipt
+    const totalPicked = Object.values(currentLog.pickedQty).reduce((sum: number, qty: number) => sum + qty, 0);
+    const totalReceived = Object.values(received).reduce((sum: number, qty: number) => sum + qty, 0);
+    
+    // CRITICAL FIX: Set status based on whether all picked quantity was received
+    const receiptStatus = totalReceived >= totalPicked ? 'received_full' : 'received_partial';
+    
     const logUpdates: any = {
       receivedQty: received,
-      status: 'received_partial',
-      history: [...currentLog.history, { action: 'received', timestamp: Date.now() }]
+      status: receiptStatus,
+      history: [...currentLog.history, { action: 'received', timestamp: Date.now(), details: `Received: ${Object.entries(received).map(([k, v]) => `${k}:${v}`).join(', ')}` }]
     };
 
     if (price !== undefined) logUpdates.price = price;
