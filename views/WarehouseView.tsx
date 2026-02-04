@@ -565,7 +565,11 @@ export const WarehouseView: React.FC = () => {
                                                                        alt=""
                                                                    />
                                                                    <div className="flex-1 min-w-0">
-                                                                       <div className="text-xs font-bold text-gray-900 truncate">{product?.description}</div>
+                                                                       <div className="text-xs font-bold text-gray-900 truncate">
+                                                                           {product?.description && !product.description.toLowerCase().includes('item from order')
+                                                                               ? product.description
+                                                                               : 'Item'}
+                                                                       </div>
                                                                        <div className="flex flex-col gap-1 mt-0.5">
                                                                            <div className="flex items-center gap-2">
                                                                                <span className="text-[9px] text-gray-500">{timeStr}</span>
@@ -701,8 +705,11 @@ const HistoryLogItem: React.FC<{
                 className="w-12 h-12 rounded-xl bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm"
                 onClick={() => {
                     if (product?.imageUrl) {
+                        const cleanDescription = product?.description && !product.description.toLowerCase().includes('item from order')
+                            ? product.description
+                            : 'Item';
                         setPreviewImage(product.imageUrl, {
-                            title: product?.description,
+                            title: cleanDescription,
                             qty: `Received: ${qty}`,
                             tag: 'RECEIVED'
                         });
@@ -713,7 +720,11 @@ const HistoryLogItem: React.FC<{
             </div>
             <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                    <div className="text-xs font-bold text-gray-900 truncate pr-2">{product?.description}</div>
+                    <div className="text-xs font-bold text-gray-900 truncate pr-2">
+                        {product?.description && !product.description.toLowerCase().includes('item from order')
+                            ? product.description
+                            : 'Item'}
+                    </div>
                     <div className="flex items-center gap-2">
                         <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
                             {timeStr}
@@ -1068,7 +1079,11 @@ const WarehouseItem: React.FC<{
                         )}
                     </div>
 
-                    <div className="font-bold text-gray-900 text-xs mt-0.5 line-clamp-1">{product.description}</div>
+                    <div className="font-bold text-gray-900 text-xs mt-0.5 line-clamp-1">
+                        {product.description && !product.description.toLowerCase().includes('item from order') 
+                            ? product.description 
+                            : 'Item'}
+                    </div>
                     
                     {/* Display Note if exists - HIDDEN FOR CLEANER UI */}
                     {/* {log.notes && (
