@@ -17,6 +17,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, setView }) 
   const { user } = useStore();
   const isAdmin = user?.role === 'admin';
   const isAccountant = user?.role === 'accountant';
+  const isMarketPerson = user?.role === 'market_person';
   const canBill = isAdmin || isAccountant;
 
   const navItems: NavItem[] = [
@@ -26,8 +27,11 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, setView }) 
     { id: 'suppliers', label: 'Suppliers', icon: Users },
   ];
 
+  // Remove Purchase tab for market person
+  const filteredItems = isMarketPerson ? navItems.filter(item => item.id !== 'orders') : navItems;
+
   // Add billing tab for accountants and admins
-  const withBilling = canBill ? [...navItems, { id: 'billing', label: 'Bills', icon: FileText }] : navItems;
+  const withBilling = canBill ? [...filteredItems, { id: 'billing', label: 'Bills', icon: FileText }] : filteredItems;
 
   // Add settings tab only for admin users
   const finalNavItems = isAdmin ? [...withBilling, { id: 'admin-settings', label: 'Settings', icon: Settings }] : withBilling;

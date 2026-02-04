@@ -1418,7 +1418,8 @@ export const OrdersView: React.FC = () => {
                             <select
                                 value={selectedStoreId || ''}
                                 onChange={(e) => setSelectedStoreId(e.target.value || null)}
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                disabled={user?.role === 'market_person' || user?.role === 'accountant'}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100"
                             >
                                 <option value="">-- Choose a store --</option>
                                 {shopifyConfigs.map(store => (
