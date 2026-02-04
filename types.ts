@@ -42,6 +42,7 @@ export interface DailyLog {
   productId: string;
   supplierId?: string; // Optional
   date: string; // YYYY-MM-DD
+  pickupScheduleDate?: string; // YYYY-MM-DD, for scheduling pickup to a future date (Next Day feature)
 
   hasSizes: boolean; // Toggle for dynamic sizing
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Check, Save, X, Clock, TrendingUp, Minus, Plus, Truck, Camera, Image as ImageIcon, History, Lock, Calendar, AlertCircle, Trash2, Info, Edit2, Send } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { DailyLog } from '../types';
@@ -9,20 +9,60 @@ interface PickupViewProps {
     setView?: (view: string) => void;
 }
 
+type PickupTab = 'today' | 'next-day' | 'history';
+
 export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
     const storeData = useStore();
-    const { dailyLogs = [], products = [], suppliers = [], processPickup, deleteLog, getTodayDate, setPreviewImage, user, updateLogSupplier } = storeData;
+    const { dailyLogs = [], products = [], suppliers = [], processPickup, deleteLog, getTodayDate, setPreviewImage, user, updateLogSupplier, updatePickupScheduleDate } = storeData;
     const today = getTodayDate();
+    const tomorrow = useMemo(() => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    }, [today]);
 
     // Check if user can edit this view
     const canEdit = user ? canEditView(user.role, 'pickup') : false;
     const isAdmin = user?.role === 'admin';
+    const [activeTab, setActiveTab] = useState<PickupTab>('today');
     const [isClearingHistory, setIsClearingHistory] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
 
+    // Auto-shift Next Day entries to Today at midnight
+    useEffect(() => {
+        const checkAndShiftEntries = async () => {
+            const now = new Date();
+            const currentDate = now.toISOString().split('T')[0];
+
+            // Find all logs scheduled for previous dates (means we've passed midnight)
+            const logsToShift = dailyLogs.filter(log => {
+                if (!log.pickupScheduleDate) return false;
+                const scheduledDate = new Date(log.pickupScheduleDate);
+                const currentDateObj = new Date(currentDate);
+                return scheduledDate <= currentDateObj;
+            });
+
+            // Shift them by clearing pickupScheduleDate
+            for (const log of logsToShift) {
+                if (log.pickupScheduleDate && log.pickupScheduleDate < currentDate) {
+                    try {
+                        await updateLogSupplier(log.id, log.supplierId ? suppliers.find(s => s.id === log.supplierId)?.name || '' : '');
+                    } catch (e) {
+                        console.error('Error shifting entry to today:', e);
+                    }
+                }
+            }
+        };
+
+        const interval = setInterval(checkAndShiftEntries, 60000); // Check every minute
+        checkAndShiftEntries(); // Check immediately on mount
+
+        return () => clearInterval(interval);
+    }, [dailyLogs, suppliers, updateLogSupplier]);
+
     // Calculate Progress (Today Only for the graph)
     const { totalOrdered, totalPicked, progress } = useMemo(() => {
-        const todayLogs = dailyLogs.filter(l => l.date === today);
+        const todayLogs = dailyLogs.filter(l => l.date === today && !l.pickupScheduleDate);
         let ord = 0;
         let pck = 0;
 
@@ -38,38 +78,49 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
         return { totalOrdered: ord, totalPicked: pck, progress: pct };
     }, [dailyLogs, today]);
 
-    // Active items for pickup (ALL pending orders)
-    // Exclude items where all quantities have been fully dispatched
-    const activeLogs = dailyLogs.filter(l => {
-        // Only include items with these statuses
-        if (!['ordered', 'picked_partial', 'picked_full'].includes(l.status)) {
-            return false;
-        }
+    // Today's Active items for pickup (not scheduled for next day)
+    const todayActiveLogs = useMemo(() => {
+        return dailyLogs.filter(l => {
+            if (!['ordered', 'picked_partial', 'picked_full'].includes(l.status)) return false;
+            if (l.pickupScheduleDate) return false; // Exclude next day scheduled items
+            
+            const orderedTotal = (Object.values(l.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+            const dispatchedTotal = (Object.values(l.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+            const remaining = orderedTotal - dispatchedTotal;
+            return remaining > 0;
+        }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [dailyLogs]);
 
-        // Calculate remaining quantity (ordered - dispatched)
-        const orderedTotal = (Object.values(l.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-        const dispatchedTotal = (Object.values(l.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
-        const remaining = orderedTotal - dispatchedTotal;
+    // Next Day Active items for pickup (scheduled for tomorrow)
+    const nextDayActiveLogs = useMemo(() => {
+        return dailyLogs.filter(l => {
+            if (!['ordered', 'picked_partial', 'picked_full'].includes(l.status)) return false;
+            if (l.pickupScheduleDate !== tomorrow) return false;
+            
+            const orderedTotal = (Object.values(l.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+            const dispatchedTotal = (Object.values(l.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+            const remaining = orderedTotal - dispatchedTotal;
+            return remaining > 0;
+        }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [dailyLogs, tomorrow]);
 
-        // Only show items that have remaining quantity
-        return remaining > 0;
-    }).sort((a, b) => {
-        // Sort by date desc (newest first)
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
-
-
-    const totalPendingQty = activeLogs.reduce((acc: number, log) => {
+    const totalTodayPendingQty = todayActiveLogs.reduce((acc: number, log) => {
         const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
         const dispatched: number = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
         return acc + Math.max(0, ord - dispatched);
     }, 0);
 
-    // Group by Supplier only (no date grouping)
-    const groupedBySupplier = useMemo(() => {
-        const supplierMap: Record<string, DailyLog[]> = {};
+    const totalNextDayPendingQty = nextDayActiveLogs.reduce((acc: number, log) => {
+        const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        const dispatched: number = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+        return acc + Math.max(0, ord - dispatched);
+    }, 0);
 
-        activeLogs.forEach(log => {
+    // Group logs by supplier
+    const groupLogsBySupplier = (logsToGroup: DailyLog[]) => {
+        const supplierMap: Record<string, DailyLog[]> = {};
+        
+        logsToGroup.forEach(log => {
             let supName = 'Unassigned';
             if (log.supplierId) {
                 const s = suppliers.find(sup => sup.id === log.supplierId);
@@ -81,36 +132,29 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
 
         const supplierGroups = Object.entries(supplierMap).map(([supName, logs]) => {
             const firstLog = logs[0];
-            const supplier = suppliers.find(s => s.id === firstLog.supplierId);
-
-            // Group logs by image hash to combine same products from different orders
             const logsByHash: Record<string, DailyLog[]> = {};
             logs.forEach(log => {
                 const product = products.find(p => p.id === log.productId);
-                const hashKey = product?.imageHash || log.productId; // Use image hash if available, fallback to productId
+                const hashKey = product?.imageHash || log.productId;
                 if (!logsByHash[hashKey]) {
                     logsByHash[hashKey] = [];
                 }
                 logsByHash[hashKey].push(log);
             });
 
-            // Merge logs with same image hash into a single combined log
             const mergedLogs = Object.entries(logsByHash).map(([hashKey, hashLogs]) => {
                 if (hashLogs.length === 1) {
-                    return hashLogs[0]; // If only one, return as is
+                    return hashLogs[0];
                 }
 
-                // Combine quantities from multiple logs with same image hash
                 const combinedLog = { ...hashLogs[0] };
                 const combinedOrderedQty: Record<string, number> = {};
                 const combinedDispatchedQty: Record<string, number> = {};
 
                 hashLogs.forEach(log => {
-                    // Merge ordered quantities
                     Object.entries(log.orderedQty).forEach(([size, qty]) => {
                         combinedOrderedQty[size] = (combinedOrderedQty[size] || 0) + (qty || 0);
                     });
-                    // Merge dispatched quantities
                     Object.entries(log.dispatchedQty || {}).forEach(([size, qty]) => {
                         combinedDispatchedQty[size] = (combinedDispatchedQty[size] || 0) + (qty || 0);
                     });
@@ -118,7 +162,6 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
 
                 combinedLog.orderedQty = combinedOrderedQty;
                 combinedLog.dispatchedQty = combinedDispatchedQty;
-                // Keep original log ID for dispatch operations - don't use hash
 
                 return combinedLog;
             });
@@ -138,7 +181,10 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
         });
 
         return supplierGroups.sort((a, b) => b.totalPendingQty - a.totalPendingQty);
-    }, [activeLogs, suppliers, products]);
+    };
+
+    const todayGroupedBySupplier = useMemo(() => groupLogsBySupplier(todayActiveLogs), [todayActiveLogs, suppliers, products]);
+    const nextDayGroupedBySupplier = useMemo(() => groupLogsBySupplier(nextDayActiveLogs), [nextDayActiveLogs, suppliers, products]);
 
     // Dispatch History
     const historyLogs = useMemo(() => {
@@ -190,200 +236,321 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
             {/* Sticky Header */}
             <div className="flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
                 <h1 className="text-xl font-bold text-gray-900 tracking-tight">Pickup List</h1>
-                {activeLogs.length > 0 && (
+                {activeTab === 'today' && totalTodayPendingQty > 0 && (
                     <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
-                        {totalPendingQty} Qty Pending
+                        {totalTodayPendingQty} Qty Pending
+                    </span>
+                )}
+                {activeTab === 'next-day' && totalNextDayPendingQty > 0 && (
+                    <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
+                        {totalNextDayPendingQty} Qty Pending
                     </span>
                 )}
             </div>
 
-            {/* Progress Card (Today) */}
-            {totalOrdered > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-6 animate-in slide-in-from-top-2">
-                    <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                                <TrendingUp size={18} />
-                            </div>
-                            <div>
-                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Today's Progress</div>
-                                <div className="text-xl font-bold text-gray-900 leading-none">{progress}% Done</div>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                                {totalPicked} / {totalOrdered}
-                            </span>
-                        </div>
-                    </div>
+            {/* Tab Navigation */}
+            <div className="flex gap-2 sticky top-14 bg-white/95 backdrop-blur-sm z-30 mb-4 -mx-3 px-4 py-3 border-b border-gray-100">
+                <button
+                    onClick={() => setActiveTab('today')}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'today' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                    Today
+                </button>
+                <button
+                    onClick={() => setActiveTab('next-day')}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'next-day' ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                    Next Day
+                </button>
+                <button
+                    onClick={() => setActiveTab('history')}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === 'history' ? 'bg-green-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                    History
+                </button>
+            </div>
 
-                    <div className="relative w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                        <div
-                            className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out ${progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`}
-                            style={{ width: `${progress}%` }}
-                        ></div>
-                        <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] opacity-30"></div>
-                    </div>
+            {/* TODAY TAB */}
+            {activeTab === 'today' && (
+                <div>
+                    {/* Progress Card (Today) */}
+                    {totalOrdered > 0 && (
+                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-6 animate-in slide-in-from-top-2">
+                            <div className="flex justify-between items-center mb-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                                        <TrendingUp size={18} />
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Today's Progress</div>
+                                        <div className="text-xl font-bold text-gray-900 leading-none">{progress}% Done</div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                        {totalPicked} / {totalOrdered}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="relative w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                                <div
+                                    className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out ${progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`}
+                                    style={{ width: `${progress}%` }}
+                                ></div>
+                                <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] opacity-30"></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {todayGroupedBySupplier.length === 0 ? (
+                        <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                                <Check size={32} className="text-gray-300" />
+                            </div>
+                            <p className="font-medium">All caught up!</p>
+                            <p className="text-xs mt-1">No pending orders for today.</p>
+                        </div>
+                    ) : (
+                        todayGroupedBySupplier.map((supplierGroup) => (
+                            <SupplierGroup
+                                key={supplierGroup.id}
+                                supplierId={supplierGroup.id}
+                                supplierName={supplierGroup.name}
+                                logs={supplierGroup.logs}
+                                products={products}
+                                suppliers={suppliers}
+                                onPickup={processPickup}
+                                onDelete={deleteLog}
+                                canEdit={canEdit}
+                                isAdmin={isAdmin}
+                                onScheduleNextDay={updatePickupScheduleDate}
+                                tabType="today"
+                            />
+                        ))
+                    )}
                 </div>
             )}
 
-            {groupedBySupplier.length === 0 && historyLogs.length === 0 && (
-                <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
-                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                        <Check size={32} className="text-gray-300" />
-                    </div>
-                    <p className="font-medium">All caught up!</p>
-                    <p className="text-xs mt-1">No pending orders.</p>
+            {/* NEXT DAY TAB */}
+            {activeTab === 'next-day' && (
+                <div>
+                    {nextDayGroupedBySupplier.length === 0 ? (
+                        <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+                            <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4">
+                                <Calendar size={32} className="text-purple-300" />
+                            </div>
+                            <p className="font-medium">No items scheduled</p>
+                            <p className="text-xs mt-1">Move items from Today to see them here.</p>
+                        </div>
+                    ) : (
+                        nextDayGroupedBySupplier.map((supplierGroup) => (
+                            <SupplierGroup
+                                key={supplierGroup.id}
+                                supplierId={supplierGroup.id}
+                                supplierName={supplierGroup.name}
+                                logs={supplierGroup.logs}
+                                products={products}
+                                suppliers={suppliers}
+                                onPickup={processPickup}
+                                onDelete={deleteLog}
+                                canEdit={canEdit}
+                                isAdmin={isAdmin}
+                                onMoveToday={updatePickupScheduleDate}
+                                tabType="next-day"
+                            />
+                        ))
+                    )}
                 </div>
             )}
 
-            {/* Suppliers List (No Date Grouping) */}
-            {groupedBySupplier.map((supplierGroup) => (
-                <SupplierGroup
-                    key={supplierGroup.id}
-                    supplierId={supplierGroup.id}
-                    supplierName={supplierGroup.name}
-                    logs={supplierGroup.logs}
+            {/* HISTORY TAB */}
+            {activeTab === 'history' && (
+                <HistoryTab
+                    dailyLogs={dailyLogs}
                     products={products}
                     suppliers={suppliers}
-                    onPickup={processPickup}
-                    onDelete={deleteLog}
-                    canEdit={canEdit}
-                    isAdmin={user?.role === 'admin'}
+                    setPreviewImage={setPreviewImage}
+                    isAdmin={isAdmin}
+                    onClearHistory={async () => {
+                        const historyLogs = dailyLogs.filter(l =>
+                            ['dispatched', 'received_partial', 'received_full'].includes(l.status)
+                        );
+                        setIsClearingHistory(true);
+                        try {
+                            for (const log of historyLogs) {
+                                await deleteLog(log.id);
+                            }
+                            alert('History cleared successfully');
+                        } catch (error: any) {
+                            console.error('Error clearing history:', error);
+                            alert(`Error clearing history: ${error?.message || error}`);
+                        } finally {
+                            setIsClearingHistory(false);
+                        }
+                    }}
+                    isClearingHistory={isClearingHistory}
                 />
-            ))}
+            )}
+        </div>
+    );
+};
 
-            {/* Dispatch History Section */}
-            {historyLogs.length > 0 && (
-                <div className="mt-8 border-t border-gray-100 pt-6 mb-10">
-                    <div className="flex items-center justify-between mb-4 px-2">
-                        <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                            <History size={14} /> Recent Dispatches
-                        </h2>
-                        {isAdmin && (
-                            <button
-                                onClick={handleClearHistory}
-                                disabled={isClearingHistory}
-                                className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-full border border-red-200 active:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                title={`Delete all ${historyLogs.length} dispatch records`}
+// History Tab Component
+const HistoryTab: React.FC<{
+    dailyLogs: DailyLog[];
+    products: any[];
+    suppliers: any[];
+    setPreviewImage: (url: string | null, metadata?: any) => void;
+    isAdmin: boolean;
+    onClearHistory: () => Promise<void>;
+    isClearingHistory: boolean;
+}> = ({ dailyLogs, products, suppliers, setPreviewImage, isAdmin, onClearHistory, isClearingHistory }) => {
+    const [historyPage, setHistoryPage] = useState(1);
+
+    const historyLogs = useMemo(() => {
+        return dailyLogs.filter(l =>
+            ['dispatched', 'received_partial', 'received_full'].includes(l.status)
+        ).sort((a, b) => {
+            const getDispatchTime = (log: DailyLog) => {
+                const entry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
+                return entry ? entry.timestamp : 0;
+            };
+            return getDispatchTime(b) - getDispatchTime(a);
+        });
+    }, [dailyLogs]);
+
+    if (historyLogs.length === 0) {
+        return (
+            <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                    <History size={32} className="text-gray-300" />
+                </div>
+                <p className="font-medium">No history</p>
+                <p className="text-xs mt-1">Dispatched items will appear here.</p>
+            </div>
+        );
+    }
+
+    const itemsPerPage = 25;
+    const totalPages = Math.ceil(historyLogs.length / itemsPerPage);
+    const startIndex = (historyPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedLogs = historyLogs.slice(startIndex, endIndex);
+
+    return (
+        <div className="mb-10">
+            <div className="flex items-center justify-between mb-4 px-2">
+                <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <History size={14} /> Recent Dispatches
+                </h2>
+                {isAdmin && (
+                    <button
+                        onClick={onClearHistory}
+                        disabled={isClearingHistory}
+                        className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-full border border-red-200 active:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title={`Delete all ${historyLogs.length} dispatch records`}
+                    >
+                        Clear History
+                    </button>
+                )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                {paginatedLogs.map(log => {
+                    const product = products.find(p => p.id === log.productId);
+                    const supplier = suppliers.find(s => s.id === log.supplierId);
+
+                    const dispatchEntry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
+                    let timeStr = '';
+                    if (dispatchEntry) {
+                        const d = new Date(dispatchEntry.timestamp);
+                        timeStr = d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '');
+                    }
+
+                    const qty = Object.values(log.pickedQty).reduce((a: number, b: number) => a + (b || 0), 0);
+
+                    return (
+                        <div key={log.id} className="p-3 border-b border-gray-50 last:border-0 flex gap-3 opacity-90 hover:bg-gray-50 transition-colors">
+                            <div
+                                className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm"
+                                onClick={() => {
+                                    if (product?.imageUrl) {
+                                        const cleanDescription = product?.description && !product.description.toLowerCase().includes('item from order')
+                                            ? product.description
+                                            : 'Item';
+                                        setPreviewImage(product.imageUrl, {
+                                            title: cleanDescription,
+                                            qty: `Sent: ${qty}`,
+                                            tag: 'DISPATCHED'
+                                        });
+                                    }
+                                }}
                             >
-                                Clear History
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Pagination Logic */}
-                    {(() => {
-                        const itemsPerPage = 25;
-                        const totalPages = Math.ceil(historyLogs.length / itemsPerPage);
-                        const startIndex = (historyPage - 1) * itemsPerPage;
-                        const endIndex = startIndex + itemsPerPage;
-                        const paginatedLogs = historyLogs.slice(startIndex, endIndex);
-
-                        return (
-                            <>
-                                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                                    {paginatedLogs.map(log => {
-                                        const product = products.find(p => p.id === log.productId);
-                                        const supplier = suppliers.find(s => s.id === log.supplierId);
-
-                                        // Get dispatch time
-                                        const dispatchEntry = log.history.slice().reverse().find(h => h.action.includes('dispatch'));
-                                        let timeStr = '';
-                                        if (dispatchEntry) {
-                                            const d = new Date(dispatchEntry.timestamp);
-                                            timeStr = d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '');
-                                        }
-
-                                        // Total Picked Qty
-                                        const qty = Object.values(log.pickedQty).reduce((a: number, b: number) => a + (b || 0), 0);
-
-                                        return (
-                                            <div key={log.id} className="p-3 border-b border-gray-50 last:border-0 flex gap-3 opacity-90 hover:bg-gray-50 transition-colors">
-                                                <div
-                                                    className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm"
-                                                    onClick={() => {
-                                                        if (product?.imageUrl) {
-                                                            const cleanDescription = product?.description && !product.description.toLowerCase().includes('item from order')
-                                                                ? product.description
-                                                                : 'Item';
-                                                            setPreviewImage(product.imageUrl, {
-                                                                title: cleanDescription,
-                                                                qty: `Sent: ${qty}`,
-                                                                tag: 'DISPATCHED'
-                                                            });
-                                                        }
-                                                    }}
-                                                >
-                                                    {product?.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="text-xs font-bold text-gray-900 truncate pr-2">
-                                                            {product?.description && !product.description.toLowerCase().includes('item from order')
-                                                                ? product.description
-                                                                : 'Item'}
-                                                        </div>
-                                                        <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                                                            {timeStr}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-end mt-1">
-                                                        <div className="text-[10px] text-gray-500 font-medium">{supplier?.name || 'Unknown'}</div>
-                                                        <div className="flex items-center gap-2">
-                                                            {log.pickupProofUrl && (
-                                                                <button
-                                                                    onClick={() => setPreviewImage(log.pickupProofUrl || null, { tag: 'PROOF' })}
-                                                                    className="text-[9px] text-blue-600 flex items-center gap-0.5 bg-blue-50 px-2 py-0.5 rounded-full hover:bg-blue-100 font-bold"
-                                                                >
-                                                                    <ImageIcon size={10} /> Proof
-                                                                </button>
-                                                            )}
-                                                            <div className="text-[10px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
-                                                                Sent: {qty}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                {product?.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" alt="" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start">
+                                    <div className="text-xs font-bold text-gray-900 truncate pr-2">
+                                        {product?.description && !product.description.toLowerCase().includes('item from order')
+                                            ? product.description
+                                            : 'Item'}
+                                    </div>
+                                    <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                                        {timeStr}
+                                    </span>
                                 </div>
-
-                                {/* Pagination Controls */}
-                                {totalPages > 1 && (
-                                    <div className="mt-4 flex items-center justify-between gap-3">
-                                        <div className="text-xs font-bold text-gray-600">
-                                            Page <span className="text-blue-600">{historyPage}</span> of <span className="text-gray-900">{totalPages}</span>
-                                            <span className="text-gray-400 ml-2">({historyLogs.length} total)</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
+                                <div className="flex justify-between items-end mt-1">
+                                    <div className="text-[10px] text-gray-500 font-medium">{supplier?.name || 'Unknown'}</div>
+                                    <div className="flex items-center gap-2">
+                                        {log.pickupProofUrl && (
                                             <button
-                                                onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
-                                                disabled={historyPage === 1}
-                                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                title="Previous page"
+                                                onClick={() => setPreviewImage(log.pickupProofUrl || null, { tag: 'PROOF' })}
+                                                className="text-[9px] text-blue-600 flex items-center gap-0.5 bg-blue-50 px-2 py-0.5 rounded-full hover:bg-blue-100 font-bold"
                                             >
-                                                <ChevronUp size={16} className="text-gray-600" />
+                                                <ImageIcon size={10} /> Proof
                                             </button>
-                                            <button
-                                                onClick={() => setHistoryPage(prev => Math.min(totalPages, prev + 1))}
-                                                disabled={historyPage === totalPages}
-                                                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                title="Next page"
-                                            >
-                                                <ChevronDown size={16} className="text-gray-600" />
-                                            </button>
+                                        )}
+                                        <div className="text-[10px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                            Sent: {qty}
                                         </div>
                                     </div>
-                                )}
-                            </>
-                        );
-                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="text-xs font-bold text-gray-600">
+                        Page <span className="text-blue-600">{historyPage}</span> of <span className="text-gray-900">{totalPages}</span>
+                        <span className="text-gray-400 ml-2">({historyLogs.length} total)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
+                            disabled={historyPage === 1}
+                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Previous page"
+                        >
+                            <ChevronUp size={16} className="text-gray-600" />
+                        </button>
+                        <button
+                            onClick={() => setHistoryPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={historyPage === totalPages}
+                            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Next page"
+                        >
+                            <ChevronDown size={16} className="text-gray-600" />
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
     );
+};
 };
 
 const SupplierEditor: React.FC<{ current: string; suppliers: any[]; logId: string; updateLogSupplier: (logId: string, supplierName: string) => Promise<void> | void }> = ({ current, suppliers, logId, updateLogSupplier }) => {
@@ -444,7 +611,10 @@ const SupplierGroup: React.FC<{
     onDelete: (logId: string) => Promise<void>;
     canEdit: boolean;
     isAdmin: boolean;
-}> = ({ supplierId, supplierName, logs, products, suppliers, onPickup, onDelete, canEdit, isAdmin }) => {
+    onScheduleNextDay?: (logId: string, scheduledDate: string) => Promise<void>;
+    onMoveToday?: (logId: string, scheduledDate: null) => Promise<void>;
+    tabType?: 'today' | 'next-day';
+}> = ({ supplierId, supplierName, logs, products, suppliers, onPickup, onDelete, canEdit, isAdmin, onScheduleNextDay, onMoveToday, tabType = 'today' }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSendingPO, setIsSendingPO] = useState(false);
@@ -743,6 +913,9 @@ const SupplierGroup: React.FC<{
                             onDelete={onDelete}
                             canEdit={canEdit}
                             isAdmin={isAdmin}
+                            onScheduleNextDay={onScheduleNextDay}
+                            onMoveToday={onMoveToday}
+                            tabType={tabType}
                         />
                     ))}
                 </div>
@@ -760,22 +933,21 @@ const PickupItem: React.FC<{
     onDelete: (logId: string) => Promise<void>;
     canEdit: boolean;
     isAdmin: boolean;
-}> = ({ log, product, currentSupplierName, suppliers, onSave, onDelete, canEdit, isAdmin }) => {
+    onScheduleNextDay?: (logId: string, scheduledDate: string) => Promise<void>;
+    onMoveToday?: (logId: string, scheduledDate: null) => Promise<void>;
+    tabType?: 'today' | 'next-day';
+}> = ({ log, product, currentSupplierName, suppliers, onSave, onDelete, canEdit, isAdmin, onScheduleNextDay, onMoveToday, tabType = 'today' }) => {
     const { setPreviewImage, updateLogSupplier } = useStore();
     const [pickedValues, setPickedValues] = useState<Record<string, number>>({ ...log.pickedQty });
-    // Optimistic supplier selection so market person sees immediate feedback
     const [currentSupplierIdLocal, setCurrentSupplierIdLocal] = useState<string>(log.supplierId || '');
-
-    // Notes state
     const [showNotes, setShowNotes] = useState(!!log.notes);
     const [noteText, setNoteText] = useState(log.notes || '');
-
-    // Proof Image State
     const [proofImage, setProofImage] = useState<string | null>(null);
     const [highlightProof, setHighlightProof] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    const [isScheduling, setIsScheduling] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleDelete = async () => {
@@ -1050,7 +1222,7 @@ const PickupItem: React.FC<{
             </div>
 
             {/* ACTION FOOTER: Proof & Dispatch Side-by-Side - SLIMMER */}
-            <div className="flex gap-3 items-stretch">
+            <div className="flex gap-3 items-stretch mb-3">
                 {/* Proof Section */}
                 <div className={`flex-1 min-w-0 transition-all duration-300 ${highlightProof ? 'ring-2 ring-red-400 rounded-xl animate-pulse' : ''}`}>
                     {proofImage ? (
@@ -1096,6 +1268,54 @@ const PickupItem: React.FC<{
                     <Truck size={16} /> {isLoading ? 'Dispatching...' : 'Dispatch'}
                 </button>
             </div>
+
+            {/* Schedule/Move Buttons for Tab Actions */}
+            {tabType === 'today' && onScheduleNextDay && (
+                <button
+                    onClick={async () => {
+                        setIsScheduling(true);
+                        try {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const tomorrowStr = tomorrow.toISOString().split('T')[0];
+                            await onScheduleNextDay(log.id, tomorrowStr);
+                            alert('Moved to Next Day tab');
+                        } catch (error: any) {
+                            console.error('Error scheduling:', error);
+                            alert(`Error: ${error?.message || 'Failed to schedule'}`);
+                        } finally {
+                            setIsScheduling(false);
+                        }
+                    }}
+                    disabled={isScheduling}
+                    className="w-full h-10 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md bg-purple-600 text-white hover:bg-purple-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Schedule this item for pickup tomorrow"
+                >
+                    <Calendar size={16} /> {isScheduling ? 'Scheduling...' : 'Schedule for Next Day'}
+                </button>
+            )}
+
+            {tabType === 'next-day' && onMoveToday && (
+                <button
+                    onClick={async () => {
+                        setIsScheduling(true);
+                        try {
+                            await onMoveToday(log.id, null);
+                            alert('Moved back to Today tab');
+                        } catch (error: any) {
+                            console.error('Error moving:', error);
+                            alert(`Error: ${error?.message || 'Failed to move'}`);
+                        } finally {
+                            setIsScheduling(false);
+                        }
+                    }}
+                    disabled={isScheduling}
+                    className="w-full h-10 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Move this item back to Today"
+                >
+                    <Calendar size={16} /> {isScheduling ? 'Moving...' : 'Move Back to Today'}
+                </button>
+            )}
 
             {/* History Modal */}
             {showHistory && (

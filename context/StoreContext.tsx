@@ -66,6 +66,7 @@ interface StoreContextType extends AppState {
 
   updateLogSupplier: (logId: string, supplierName: string) => void;
   updateLogDetails: (logId: string, orderedQty: Record<string, number>, price?: number) => Promise<void>;
+  updatePickupScheduleDate: (logId: string, scheduledDate: string | null) => Promise<void>;
   deleteLog: (logId: string) => Promise<void>;
   processPickup: (logId: string, picked: Record<string, number>, notes?: string, proofImage?: string, price?: number, supplierName?: string, supplierPhone?: string) => Promise<void>;
   processReceiving: (logId: string, received: Record<string, number>, price?: number, supplierName?: string, supplierPhone?: string) => Promise<void>;
@@ -578,6 +579,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await updateDoc(logRef, updates);
     } catch (e) {
       console.error("Failed to update log details", e);
+      throw e;
+    }
+  };
+
+  const updatePickupScheduleDate = async (logId: string, scheduledDate: string | null) => {
+    try {
+      const logRef = doc(db, 'dailyLogs', logId);
+      const currentLog = data.dailyLogs.find(l => l.id === logId);
+      if (!currentLog) return;
+
+      const action = scheduledDate ? 'scheduled_for_next_day' : 'moved_back_to_today';
+      const updates: any = {
+        pickupScheduleDate: scheduledDate || null,
+        history: [...currentLog.history, { action, timestamp: Date.now() }]
+      };
+
+      await updateDoc(logRef, updates);
+    } catch (e) {
+      console.error("Failed to update pickup schedule date", e);
       throw e;
     }
   };
@@ -1329,6 +1349,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addOrUpdateDailyLog,
       updateLogSupplier,
       updateLogDetails,
+      updatePickupScheduleDate,
       deleteLog,
       processPickup,
       processReceiving,
