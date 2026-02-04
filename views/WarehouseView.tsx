@@ -86,18 +86,21 @@ export const WarehouseView: React.FC = () => {
         groups[supId].totalAmount += amt;
     });
 
-    // Merge duplicate products within each supplier group
+    // Merge duplicate products within each supplier group (by image hash)
     const mergedGroups = Object.values(groups).map(group => {
         const productMap: Record<string, DailyLog> = {};
         const mergingHistory: Record<string, DailyLog[]> = {};
         
         group.logs.forEach(log => {
-            if (!productMap[log.productId]) {
-                productMap[log.productId] = { ...log };
-                mergingHistory[log.productId] = [log];
+            const product = products.find(p => p.id === log.productId);
+            const hashKey = product?.imageHash || log.productId; // Use image hash if available
+            
+            if (!productMap[hashKey]) {
+                productMap[hashKey] = { ...log };
+                mergingHistory[hashKey] = [log];
             } else {
                 // Merge quantities
-                const existing = productMap[log.productId];
+                const existing = productMap[hashKey];
                 const newLog = { ...log };
                 
                 // Merge pickedQty
@@ -124,8 +127,8 @@ export const WarehouseView: React.FC = () => {
                     }
                 ];
                 
-                mergingHistory[log.productId].push(log);
-                productMap[log.productId] = existing;
+                mergingHistory[hashKey].push(log);
+                productMap[hashKey] = existing;
             }
         });
         
@@ -197,17 +200,20 @@ export const WarehouseView: React.FC = () => {
         supplierGroups[supId].totalAmount += amt;
     });
 
-    // Merge duplicate products within each date group
+    // Merge duplicate products within each date group (by image hash)
     const mergedSupplierGroups = Object.values(supplierGroups).map(supplier => {
         const mergedDateGroups = Object.entries(supplier.dateGroups).reduce((acc, [dateLabel, dateGroup]) => {
             const productMap: Record<string, DailyLog> = {};
             
             dateGroup.logs.forEach(log => {
-                if (!productMap[log.productId]) {
-                    productMap[log.productId] = { ...log };
+                const product = products.find(p => p.id === log.productId);
+                const hashKey = product?.imageHash || log.productId; // Use image hash if available
+                
+                if (!productMap[hashKey]) {
+                    productMap[hashKey] = { ...log };
                 } else {
                     // Merge quantities
-                    const existing = productMap[log.productId];
+                    const existing = productMap[hashKey];
                     const newLog = { ...log };
                     
                     // Merge receivedQty
@@ -227,7 +233,7 @@ export const WarehouseView: React.FC = () => {
                         }
                     ];
                     
-                    productMap[log.productId] = existing;
+                    productMap[hashKey] = existing;
                 }
             });
             
