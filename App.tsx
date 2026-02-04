@@ -135,8 +135,15 @@ const RulesGuide: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
-  const [currentView, setCurrentView] = useState('orders');
   const { user, login, isLoading, loginError, initError, isInitialized, previewImage, previewMeta, setPreviewImage } = useStore();
+  
+  // Set initial view based on user role
+  const getInitialView = () => {
+    if (user?.role === 'market_person') return 'pickup';
+    return 'orders';
+  };
+  
+  const [currentView, setCurrentView] = useState(getInitialView());
 
   // Show loading screen while Firebase is initializing
   if (!isInitialized) {
