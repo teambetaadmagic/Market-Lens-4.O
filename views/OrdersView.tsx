@@ -3078,9 +3078,7 @@ const EditableLogItem: React.FC<{
             </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <div className="flex justify-between items-start mb-0.5">
-                    <div className="text-sm font-bold text-gray-900 truncate tracking-tight">
-                        {displayDescription}
-                    </div>
+                    {/* Description hidden - not displaying item name */}
 
                     <div className="flex flex-col items-end gap-1">
                         <div className="text-[9px] text-gray-400 font-medium bg-gray-50 px-1.5 py-0.5 rounded">
