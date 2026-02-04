@@ -587,6 +587,24 @@ export const OrdersView: React.FC = () => {
             cleanedName = `#${cleanedName}`;
         }
         
+        // Validate order number format - must have at least 3 characters (like #10)
+        if (cleanedName.length < 3) {
+            setScanError('❌ Invalid barcode. Order number too short.');
+            setScanStatus('error');
+            setTimeout(() => {
+                setLastScannedBarcode('');
+                setScanStatus('idle');
+                setScanError(null);
+            }, 2000);
+            return;
+        }
+        
+        // Prevent duplicate rapid scans of same barcode
+        if (lastScannedBarcode === cleanedName && scanStatus === 'processing') {
+            console.log('[handleOrderScan] Duplicate scan detected, ignoring');
+            return;
+        }
+        
         console.log('[handleOrderScan] Cleaned order name:', cleanedName, 'from scanned:', orderName);
 
         // Check for duplicate order scan
@@ -688,7 +706,7 @@ export const OrdersView: React.FC = () => {
                             itemQtys,
                             hasSizes,
                             autoAssignedSupplierName, // auto-assigned supplier
-                            `Item from order ${orderData.orderName}`, // generic description
+                            '', // Empty description - no need to show item name
                             undefined, // NO price
                             undefined // no supplier phone
                         );
@@ -783,15 +801,18 @@ export const OrdersView: React.FC = () => {
                 if (errorMsg.includes('permission-denied')) {
                     errorMsg = "❌ Firestore permission denied. Check security rules.";
                 } else if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-                    errorMsg = `❌ Order ${lastScannedBarcode} not found in ${storeName}.\n\nTry:\n• Check order number\n• Verify correct store selected`;
+                    errorMsg = `❌ Order ${lastScannedBarcode} not found.\n\nMake sure:\n• Order number is correct\n• Correct store is selected`;
+
                 } else if (errorMsg.includes('No Shopify stores')) {
                     errorMsg = "❌ No Shopify stores connected. Add a store in Settings first.";
                 } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized') || errorMsg.includes('Invalid access token')) {
-                    errorMsg = `❌ Invalid Shopify token for ${storeName}.\n\nPlease:\n• Verify store credentials\n• Regenerate access token`;
+                    errorMsg = `❌ Authentication failed for ${storeName}.\n\nPlease:\n• Check store credentials\n• Regenerate access token in Settings`;
                 } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
-                    errorMsg = `❌ Permission denied for ${storeName}.\n\nPlease enable read_orders scope in Shopify app settings.`;
-                } else if (errorMsg.includes('timeout') || errorMsg.includes('408')) {
-                    errorMsg = `❌ Connection timeout for ${storeName}.\n\nTry scanning again.`;
+                    errorMsg = `❌ Permission denied for ${storeName}.\n\nPlease enable:\n• read_orders scope\n• write_orders scope`;
+                } else if (errorMsg.includes('timeout') || errorMsg.includes('408') || errorMsg.includes('504')) {
+                    errorMsg = `❌ Connection timeout.\n\nPlease try again.`;
+                } else if (errorMsg.includes('API error')) {
+                    errorMsg = `❌ Shopify API error.\n\nPlease:\n• Check internet connection\n• Try again in a moment`;
                 }
             }
             
