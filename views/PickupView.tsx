@@ -890,7 +890,7 @@ const SupplierGroup: React.FC<{
                                         alert(`Error: ${error?.message || 'Failed to schedule'}`);
                                     }
                                 }}
-                                className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
+                                className="bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
                                 title="Move all items to Next Day"
                             >
                                 <Calendar size={14} />
