@@ -6,13 +6,13 @@ import { getStorage } from "firebase/storage";
 // Market Lens Firebase Configuration
 // ------------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyBWKwMJNb8ukhwdkXoN2puTtI3yyxVODSQ",
-  authDomain: "market-lense-4-o.firebaseapp.com",
-  projectId: "market-lense-4-o",
-  storageBucket: "market-lense-4-o.firebasestorage.app",
-  messagingSenderId: "154541745882",
-  appId: "1:154541745882:web:5b163b15cfb2549088e7e3",
-  measurementId: "G-JQ8J9GG860"
+  apiKey: "AIzaSyA6NRKT-L_7I4sfbjLKKX0PmExgFswnKnA",
+  authDomain: "market-lens-a907c.firebaseapp.com",
+  projectId: "market-lens-a907c",
+  storageBucket: "market-lens-a907c.firebasestorage.app",
+  messagingSenderId: "566860518876",
+  appId: "1:566860518876:web:cc5a04fd93be90107f2b19",
+  measurementId: "G-CP10QDCY3R"
 };
 
 // Check if config is still default placeholder
