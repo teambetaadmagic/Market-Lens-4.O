@@ -13,18 +13,28 @@ export const getPermissions = (userRole: UserRole, view: string): ViewPermission
       pickup: { canEdit: true, canView: true, mode: 'edit' },
       warehouse: { canEdit: true, canView: true, mode: 'edit' },
       suppliers: { canEdit: true, canView: true, mode: 'edit' },
+      billing: { canEdit: true, canView: true, mode: 'edit' },
     },
     warehouse: {
       orders: { canEdit: true, canView: true, mode: 'edit' },
       pickup: { canEdit: false, canView: true, mode: 'view' },
       warehouse: { canEdit: true, canView: true, mode: 'edit' },
       suppliers: { canEdit: true, canView: true, mode: 'edit' },
+      billing: { canEdit: false, canView: false, mode: 'view' },
     },
     market_person: {
       orders: { canEdit: false, canView: true, mode: 'view' },
       pickup: { canEdit: true, canView: true, mode: 'edit' },
       warehouse: { canEdit: false, canView: true, mode: 'view' },
       suppliers: { canEdit: true, canView: true, mode: 'edit' },
+      billing: { canEdit: false, canView: false, mode: 'view' },
+    },
+    accountant: {
+      orders: { canEdit: false, canView: true, mode: 'view' },
+      pickup: { canEdit: false, canView: true, mode: 'view' },
+      warehouse: { canEdit: false, canView: true, mode: 'view' },
+      suppliers: { canEdit: false, canView: true, mode: 'view' },
+      billing: { canEdit: true, canView: true, mode: 'edit' },
     },
   };
 

@@ -1,298 +1,582 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
-import { ChevronDown, Check, X, Upload, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, AlertCircle, Trash2, DollarSign, Percent } from 'lucide-react';
+import { BillingEntry, DailyLog } from '../types';
+import { canEditView } from '../utils/permissions';
 
 export const BillingView: React.FC = () => {
-  const { dailyLogs = [], suppliers = [], user } = useStore();
+  const storeData = useStore();
+  const { billingEntries = [], dailyLogs = [], suppliers = [], products = [], user, createOrUpdateBillingEntry, uploadBillingProof, updateBillingGST, deleteBillingEntry } = storeData;
 
-  // Only accountants and admins can see this
-  const canView = user?.role === 'accountant' || user?.role === 'admin';
+  // Check if user can edit this view
+  const canEdit = user ? canEditView(user.role, 'billing') : false;
 
-  if (!canView) {
-    return (
-      <div className="p-6 text-center">
-        <p className="text-gray-600">You don't have access to billing</p>
-      </div>
-    );
-  }
+  // Get received/confirmed inward logs
+  const receivedLogs = useMemo(() => {
+    return dailyLogs.filter(l => ['received_full', 'received_partial'].includes(l.status));
+  }, [dailyLogs]);
 
-  // Group received items by supplier and date
-  const billingData = useMemo(() => {
-    const receivedLogs = dailyLogs.filter(l => 
-      l.status === 'received_full' || l.status === 'received_partial'
-    );
-
-    const grouped: Record<string, { 
-      supplierId: string;
-      supplierName: string;
-      dateGroups: Record<string, {
-        date: string;
-        logs: typeof receivedLogs;
-      }>;
-    }> = {};
+  // Group by supplier and date
+  const groupedBySupplier = useMemo(() => {
+    const supplierMap: Record<string, Record<string, DailyLog[]>> = {};
 
     receivedLogs.forEach(log => {
+      const supName = suppliers.find(s => s.id === log.supplierId)?.name || 'Unknown';
       const supId = log.supplierId || 'unknown';
-      if (!grouped[supId]) {
-        const supplier = suppliers.find(s => s.id === supId);
-        grouped[supId] = {
-          supplierId: supId,
-          supplierName: supplier?.name || 'Unknown',
-          dateGroups: {}
-        };
+
+      if (!supplierMap[supId]) {
+        supplierMap[supId] = {};
       }
 
-      const date = log.date;
-      if (!grouped[supId].dateGroups[date]) {
-        grouped[supId].dateGroups[date] = {
-          date,
-          logs: []
-        };
+      if (!supplierMap[supId][log.date]) {
+        supplierMap[supId][log.date] = [];
       }
 
-      grouped[supId].dateGroups[date].logs.push(log);
+      supplierMap[supId][log.date].push(log);
     });
 
-    return grouped;
-  }, [dailyLogs, suppliers]);
+    // Convert to array format
+    return Object.entries(supplierMap).map(([supId, dateMap]) => ({
+      supplierId: supId,
+      supplierName: suppliers.find(s => s.id === supId)?.name || 'Unknown',
+      dates: Object.entries(dateMap)
+        .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
+        .map(([date, logs]) => ({
+          date,
+          logs,
+          totalReceivedQty: logs.reduce((sum, log) => {
+            const qty = Object.values(log.receivedQty || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+            return sum + qty;
+          }, 0)
+        }))
+    }));
+  }, [receivedLogs, suppliers]);
 
   return (
-    <div className="pb-36 pt-0 px-3 max-w-lg mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
+    <div className="pb-36 pt-0 px-3 max-w-lg mx-auto min-h-screen relative">
+      {/* Read-Only Banner */}
+      {!canEdit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-center gap-2">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0" />
+          <p className="text-xs font-semibold text-amber-800">Read-only mode: You cannot edit billing entries</p>
+        </div>
+      )}
+
+      {/* Sticky Header */}
+      <div className="flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-sm z-30 py-3 mb-4 border-b border-gray-100 -mx-3 px-4">
         <h1 className="text-xl font-bold text-gray-900 tracking-tight">Billing</h1>
+        <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
+          {groupedBySupplier.length} Suppliers
+        </span>
       </div>
 
-      {Object.keys(billingData).length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-gray-400 mt-20 mb-8 text-sm bg-gray-50 py-10 rounded-2xl border-2 border-dashed border-gray-200">
-          <span className="font-medium text-gray-500">No received items yet</span>
-          <span className="text-xs text-gray-400 mt-1">Complete warehouse inward to start billing</span>
+      {groupedBySupplier.length === 0 ? (
+        <div className="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+            <DollarSign size={32} className="text-gray-300" />
+          </div>
+          <p className="font-medium">No confirmed inward receipts</p>
+          <p className="text-xs mt-1">Complete warehouse inward to start billing</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Supplier Dropdown */}
-          {Object.entries(billingData).map(([supplierId, supplierGroup]) => (
-            <SupplierBillingGroup
-              key={supplierId}
-              supplierId={supplierId}
-              supplierName={supplierGroup.supplierName}
-              dateGroups={supplierGroup.dateGroups}
-            />
-          ))}
-        </div>
+        groupedBySupplier.map((supplierGroup) => (
+          <SupplierBillingGroup
+            key={supplierGroup.supplierId}
+            supplierGroup={supplierGroup}
+            products={products}
+            billingEntries={billingEntries}
+            canEdit={canEdit}
+            onCreateEntry={createOrUpdateBillingEntry}
+            onUploadProof={uploadBillingProof}
+            onUpdateGST={updateBillingGST}
+            onDelete={deleteBillingEntry}
+          />
+        ))
       )}
     </div>
   );
 };
 
-const SupplierBillingGroup: React.FC<{
-  supplierId: string;
-  supplierName: string;
-  dateGroups: Record<string, { date: string; logs: any[] }>;
-}> = ({ supplierId, supplierName, dateGroups }) => {
-  const [expanded, setExpanded] = useState(false);
+interface SupplierBillingGroupProps {
+  supplierGroup: any;
+  products: any[];
+  billingEntries: any[];
+  canEdit: boolean;
+  onCreateEntry: (inwardLogId: string, pricePerUnit: number, gstEnabled?: boolean) => Promise<string>;
+  onUploadProof: (billingId: string, proofType: 'bill' | 'payment', imageBase64: string) => Promise<void>;
+  onUpdateGST: (billingId: string, gstEnabled: boolean) => Promise<void>;
+  onDelete: (billingId: string) => Promise<void>;
+}
+
+const SupplierBillingGroup: React.FC<SupplierBillingGroupProps> = ({
+  supplierGroup,
+  products,
+  billingEntries,
+  canEdit,
+  onCreateEntry,
+  onUploadProof,
+  onUpdateGST,
+  onDelete
+}) => {
+  const [expandedSupplier, setExpandedSupplier] = useState(false);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+
+  const toggleDateExpand = (date: string) => {
+    setExpandedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) {
+        next.delete(date);
+      } else {
+        next.add(date);
+      }
+      return next;
+    });
+  };
+
+  const totalQty = useMemo(() => {
+    return supplierGroup.dates.reduce((sum: number, dateGroup: any) => sum + dateGroup.totalReceivedQty, 0);
+  }, [supplierGroup.dates]);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
       {/* Supplier Header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full bg-slate-100 px-4 py-3 border-b border-gray-200 flex justify-between items-center hover:bg-slate-200 transition-colors cursor-pointer"
+      <div
+        onClick={() => setExpandedSupplier(!expandedSupplier)}
+        className="w-full p-3 border-b border-gray-200 bg-slate-100 hover:bg-slate-200 cursor-pointer transition-colors"
       >
-        <div className="flex items-center gap-2 flex-1 text-left">
-          <ChevronDown 
-            size={16} 
-            className={`text-gray-600 transition-transform ${expanded ? '' : '-rotate-90'}`}
-          />
-          <div className="font-bold text-gray-800 text-sm">{supplierName}</div>
-        </div>
-        <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded-full border border-gray-200 text-gray-500">
-          {Object.keys(dateGroups).length} dates
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="divide-y divide-gray-50">
-          {/* Date-wise entries */}
-          {Object.entries(dateGroups).map(([date, dateGroup]) => (
-            <DateBillingEntry
-              key={date}
-              date={date}
-              logs={dateGroup.logs}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const DateBillingEntry: React.FC<{
-  date: string;
-  logs: any[];
-}> = ({ date, logs }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [pricePerUnit, setPricePerUnit] = useState('');
-  const [gstEnabled, setGstEnabled] = useState(false);
-  const [billProofUploaded, setBillProofUploaded] = useState(false);
-  const [paymentProofUploaded, setPaymentProofUploaded] = useState(false);
-
-  // Calculate total received quantity
-  const totalQty = logs.reduce((sum, log) => {
-    const qty = Object.values(log.receivedQty || {}).reduce((a: number, b: number) => a + b, 0);
-    return sum + qty;
-  }, 0);
-
-  // Calculate amounts
-  const baseAmount = totalQty * (parseFloat(pricePerUnit) || 0);
-  const gstAmount = gstEnabled ? baseAmount * 0.05 : 0;
-  const finalAmount = baseAmount + gstAmount;
-
-  return (
-    <div className="p-4 space-y-4">
-      {/* Date Header */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex justify-between items-center hover:bg-gray-50 p-2 rounded transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <ChevronDown 
-            size={14} 
-            className={`text-gray-600 transition-transform ${expanded ? '' : '-rotate-90'}`}
-          />
-          <span className="font-semibold text-gray-800">{date}</span>
-        </div>
-        <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-          {totalQty} Units
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="space-y-4 bg-gray-50 p-3 rounded-lg">
-          {/* Quantity (Read-only) */}
-          <div>
-            <label className="text-xs font-bold text-gray-600 uppercase">Received Quantity</label>
-            <div className="text-lg font-bold text-gray-900 mt-1">{totalQty} units</div>
-            <div className="text-xs text-gray-500 mt-1">
-              {logs.map((log, idx) => {
-                const qty = Object.entries(log.receivedQty || {})
-                  .map(([k, v]) => `${k}:${v}`)
-                  .join(', ');
-                return <div key={idx}>{qty}</div>;
-              })}
+        <div className="flex justify-between items-center">
+          <span className="font-bold text-gray-900 text-sm truncate">{supplierGroup.supplierName}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
+              {totalQty} Items
+            </span>
+            <div className="text-gray-400">
+              {expandedSupplier ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Price Input */}
-          <div>
-            <label className="text-xs font-bold text-gray-600 uppercase">Price Per Unit (₹)</label>
+      {expandedSupplier && (
+        <div className="p-3 space-y-4">
+          {supplierGroup.dates.map((dateGroup: any) => (
+            <DateBillingGroup
+              key={dateGroup.date}
+              date={dateGroup.date}
+              logs={dateGroup.logs}
+              totalReceivedQty={dateGroup.totalReceivedQty}
+              products={products}
+              billingEntries={billingEntries}
+              canEdit={canEdit}
+              onCreateEntry={onCreateEntry}
+              onUploadProof={onUploadProof}
+              onUpdateGST={onUpdateGST}
+              onDelete={onDelete}
+              isExpanded={expandedDates.has(dateGroup.date)}
+              onToggleExpand={() => toggleDateExpand(dateGroup.date)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface DateBillingGroupProps {
+  date: string;
+  logs: DailyLog[];
+  totalReceivedQty: number;
+  products: any[];
+  billingEntries: any[];
+  canEdit: boolean;
+  onCreateEntry: (inwardLogId: string, pricePerUnit: number, gstEnabled?: boolean) => Promise<string>;
+  onUploadProof: (billingId: string, proofType: 'bill' | 'payment', imageBase64: string) => Promise<void>;
+  onUpdateGST: (billingId: string, gstEnabled: boolean) => Promise<void>;
+  onDelete: (billingId: string) => Promise<void>;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}
+
+const DateBillingGroup: React.FC<DateBillingGroupProps> = ({
+  date,
+  logs,
+  totalReceivedQty,
+  products,
+  billingEntries,
+  canEdit,
+  onCreateEntry,
+  onUploadProof,
+  onUpdateGST,
+  onDelete,
+  isExpanded,
+  onToggleExpand
+}) => {
+  const formatDate = new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
+
+  return (
+    <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+      {/* Date Header */}
+      <div
+        onClick={onToggleExpand}
+        className="p-3 bg-gray-100 hover:bg-gray-150 cursor-pointer transition-colors flex justify-between items-center"
+      >
+        <span className="text-sm font-bold text-gray-900">{formatDate}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-bold bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
+            {totalReceivedQty} Qty
+          </span>
+          <div className="text-gray-400">
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="p-3 space-y-4">
+          {logs.map(log => (
+            <BillingEntryCard
+              key={log.id}
+              log={log}
+              product={products.find(p => p.id === log.productId)}
+              billingEntry={billingEntries.find(b => b.inwardLogId === log.id)}
+              canEdit={canEdit}
+              onCreateEntry={onCreateEntry}
+              onUploadProof={onUploadProof}
+              onUpdateGST={onUpdateGST}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface BillingEntryCardProps {
+  log: DailyLog;
+  product: any;
+  billingEntry: BillingEntry | undefined;
+  canEdit: boolean;
+  onCreateEntry: (inwardLogId: string, pricePerUnit: number, gstEnabled?: boolean) => Promise<string>;
+  onUploadProof: (billingId: string, proofType: 'bill' | 'payment', imageBase64: string) => Promise<void>;
+  onUpdateGST: (billingId: string, gstEnabled: boolean) => Promise<void>;
+  onDelete: (billingId: string) => Promise<void>;
+}
+
+const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
+  log,
+  product,
+  billingEntry,
+  canEdit,
+  onCreateEntry,
+  onUploadProof,
+  onUpdateGST,
+  onDelete
+}) => {
+  const [editPrice, setEditPrice] = useState(billingEntry?.pricePerUnit.toString() || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const billProofInputRef = useRef<HTMLInputElement>(null);
+  const paymentProofInputRef = useRef<HTMLInputElement>(null);
+
+  const totalReceivedQty = useMemo(() => {
+    return Object.values(log.receivedQty || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+  }, [log.receivedQty]);
+
+  const handleSavePrice = async () => {
+    if (!editPrice || isNaN(parseFloat(editPrice))) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onCreateEntry(log.id, parseFloat(editPrice), billingEntry?.gstEnabled || false);
+      alert('Price saved successfully');
+    } catch (error: any) {
+      console.error('Error saving price:', error);
+      alert(`Error: ${error?.message || 'Failed to save price'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleGST = async () => {
+    if (!billingEntry) {
+      alert('Please save price first');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onUpdateGST(billingEntry.id, !billingEntry.gstEnabled);
+    } catch (error: any) {
+      console.error('Error updating GST:', error);
+      alert(`Error: ${error?.message || 'Failed to update GST'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleProofUpload = async (file: File, proofType: 'bill' | 'payment') => {
+    if (!billingEntry) {
+      alert('Please save price first');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const imageBase64 = reader.result as string;
+        try {
+          await onUploadProof(billingEntry.id, proofType, imageBase64);
+          alert(`${proofType === 'bill' ? 'Bill' : 'Payment'} proof uploaded successfully`);
+        } catch (error: any) {
+          console.error('Error uploading proof:', error);
+          alert(`Error: ${error?.message || 'Failed to upload proof'}`);
+        } finally {
+          setIsUploading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!billingEntry) return;
+
+    const confirmed = window.confirm('Are you sure you want to delete this billing entry?');
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await onDelete(billingEntry.id);
+      alert('Billing entry deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting entry:', error);
+      alert(`Error: ${error?.message || 'Failed to delete'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Status indicators
+  const billProofStatus = billingEntry?.supplierBillProof ? 'green' : 'red';
+  const paymentProofStatus = billingEntry?.paymentProof ? 'green' : 'red';
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+      {/* Product Info */}
+      <div className="flex gap-3">
+        {product?.imageUrl && (
+          <img
+            src={product.imageUrl}
+            alt="product"
+            className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-gray-100"
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-gray-900">
+            {product?.description && !product.description.toLowerCase().includes('item from order')
+              ? product.description
+              : 'Item'}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">Received: {totalReceivedQty} units</div>
+        </div>
+      </div>
+
+      {/* Pricing Section */}
+      {!billingEntry ? (
+        <div className="space-y-2 bg-blue-50 p-3 rounded-lg border border-blue-200">
+          <label className="text-xs font-bold text-gray-700 uppercase">Price Per Unit (₹)</label>
+          <div className="flex gap-2">
             <input
               type="number"
-              value={pricePerUnit}
-              onChange={(e) => setPricePerUnit(e.target.value)}
-              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0"
+              value={editPrice}
+              onChange={(e) => setEditPrice(e.target.value)}
+              placeholder="0.00"
+              className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!canEdit}
             />
-          </div>
-
-          {/* GST Toggle */}
-          <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
-            <div>
-              <div className="text-xs font-bold text-gray-600 uppercase">GST (5%)</div>
-              <div className="text-sm text-gray-500 mt-0.5">Add 5% GST</div>
-            </div>
             <button
-              onClick={() => setGstEnabled(!gstEnabled)}
-              className="transition-colors"
+              onClick={handleSavePrice}
+              disabled={!canEdit || isSaving || !editPrice}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors"
             >
-              {gstEnabled ? (
-                <ToggleRight size={24} className="text-blue-600" />
-              ) : (
-                <ToggleLeft size={24} className="text-gray-400" />
-              )}
+              {isSaving ? '...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 bg-green-50 p-3 rounded-lg border border-green-200">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-xs font-bold text-gray-600 uppercase">Price per Unit</div>
+              <div className="text-lg font-bold text-gray-900">₹{billingEntry.pricePerUnit}</div>
+              <div className="text-xs text-gray-600 mt-1">Total: ₹{billingEntry.totalAmount}</div>
+            </div>
+
+            {/* GST Toggle */}
+            <button
+              onClick={handleToggleGST}
+              disabled={!canEdit || isSaving}
+              className={`px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-1 transition-colors ${
+                billingEntry.gstEnabled
+                  ? 'bg-amber-600 text-white hover:bg-amber-700'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              } disabled:opacity-50`}
+              title="Toggle 5% GST"
+            >
+              <Percent size={14} />
+              GST
             </button>
           </div>
 
-          {/* Amount Summary */}
-          {pricePerUnit && (
-            <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Base Amount:</span>
-                <span className="font-bold text-gray-900">₹{baseAmount.toFixed(2)}</span>
+          {billingEntry.gstEnabled && (
+            <div className="text-xs bg-white p-2 rounded border border-amber-200">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-600">GST (5%)</span>
+                <span className="font-bold text-amber-700">₹{billingEntry.gstAmount.toFixed(2)}</span>
               </div>
-              {gstEnabled && (
-                <div className="flex justify-between text-sm border-t border-gray-100 pt-2">
-                  <span className="text-gray-600">GST (5%):</span>
-                  <span className="font-bold text-gray-900">₹{gstAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2">
-                <span className="text-gray-900">Final Amount:</span>
-                <span className="text-blue-600">₹{finalAmount.toFixed(2)}</span>
+              <div className="flex justify-between font-bold">
+                <span className="text-gray-900">Final Amount</span>
+                <span className="text-green-700">₹{billingEntry.finalAmount.toFixed(2)}</span>
               </div>
             </div>
           )}
-
-          {/* Image Uploads */}
-          <div className="space-y-2">
-            {/* Supplier Bill Proof */}
-            <ProofUploadSection
-              title="Supplier Bill Proof"
-              uploaded={billProofUploaded}
-              onUpload={() => setBillProofUploaded(!billProofUploaded)}
-            />
-            
-            {/* Payment Proof */}
-            <ProofUploadSection
-              title="Payment Proof"
-              uploaded={paymentProofUploaded}
-              onUpload={() => setPaymentProofUploaded(!paymentProofUploaded)}
-            />
-          </div>
-
-          {/* Status Indicators */}
-          <div className="flex gap-3 justify-center pt-2">
-            <div className="flex items-center gap-1">
-              <div className={`w-3 h-3 rounded-full ${billProofUploaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-xs text-gray-600">Bill</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className={`w-3 h-3 rounded-full ${paymentProofUploaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-xs text-gray-600">Payment</span>
-            </div>
-          </div>
         </div>
       )}
-    </div>
-  );
-};
 
-const ProofUploadSection: React.FC<{
-  title: string;
-  uploaded: boolean;
-  onUpload: () => void;
-}> = ({ title, uploaded, onUpload }) => {
-  return (
-    <div className="bg-white p-3 rounded-lg border border-gray-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs font-bold text-gray-600 uppercase">{title}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {uploaded ? 'Uploaded ✓' : 'Not uploaded'}
+      {billingEntry && (
+        <>
+          {/* Image Proofs */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Supplier Bill Proof */}
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-bold text-gray-700">Bill Proof</div>
+                <div className={`w-3 h-3 rounded-full ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              </div>
+
+              {billingEntry.supplierBillProof ? (
+                <div className="space-y-2">
+                  <img
+                    src={billingEntry.supplierBillProof.url}
+                    alt="bill"
+                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    onClick={() => {
+                      if (canEdit) {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = (e: any) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleProofUpload(file, 'bill');
+                        };
+                        input.click();
+                      }
+                    }}
+                    disabled={!canEdit || isUploading}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => billProofInputRef.current?.click()}
+                  disabled={!canEdit || isUploading}
+                  className="w-full flex flex-col items-center gap-1 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  <Upload size={16} />
+                  <span className="text-[10px]">Upload</span>
+                </button>
+              )}
+              <input
+                ref={billProofInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleProofUpload(file, 'bill');
+                }}
+                style={{ display: 'none' }}
+              />
+            </div>
+
+            {/* Payment Proof */}
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-bold text-gray-700">Payment</div>
+                <div className={`w-3 h-3 rounded-full ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              </div>
+
+              {billingEntry.paymentProof ? (
+                <div className="space-y-2">
+                  <img
+                    src={billingEntry.paymentProof.url}
+                    alt="payment"
+                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    onClick={() => {
+                      if (canEdit) {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = (e: any) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleProofUpload(file, 'payment');
+                        };
+                        input.click();
+                      }
+                    }}
+                    disabled={!canEdit || isUploading}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => paymentProofInputRef.current?.click()}
+                  disabled={!canEdit || isUploading}
+                  className="w-full flex flex-col items-center gap-1 py-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  <Upload size={16} />
+                  <span className="text-[10px]">Upload</span>
+                </button>
+              )}
+              <input
+                ref={paymentProofInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleProofUpload(file, 'payment');
+                }}
+                style={{ display: 'none' }}
+              />
+            </div>
           </div>
-        </div>
-        <button
-          onClick={onUpload}
-          className="p-2 hover:bg-gray-100 rounded transition-colors text-blue-600"
-        >
-          <Upload size={16} />
-        </button>
-      </div>
-      {/* Placeholder for image preview - will show uploaded image without blur */}
-      {uploaded && (
-        <div className="mt-2 bg-gray-100 rounded-lg h-20 flex items-center justify-center border border-dashed border-gray-300">
-          <span className="text-xs text-gray-500">Image uploaded (clear & visible)</span>
-        </div>
+
+          {/* Delete Button */}
+          {canEdit && (
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold text-sm py-2 rounded-lg border border-red-200 transition-colors disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Entry'}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
