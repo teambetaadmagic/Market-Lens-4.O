@@ -475,6 +475,117 @@ const SupplierGroup: React.FC<{
         }
     };
 
+    const generateWatermarkedImage = async (log: DailyLog, product: any, supplierName?: string): Promise<{ blob: Blob; mimeType: string } | null> => {
+        if (!product?.imageUrl) return null;
+
+        return new Promise(async (resolve) => {
+            try {
+                const originalResponse = await fetch(product.imageUrl);
+                const originalBlob = await originalResponse.blob();
+                const originalMimeType = originalBlob.type || 'image/jpeg';
+
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.src = product.imageUrl;
+
+                img.onload = () => {
+                    const originalWidth = img.width;
+                    const originalHeight = img.height;
+                    const originalAspect = originalWidth / originalHeight;
+
+                    const MAX_DIMENSION = 1200;
+
+                    let canvasWidth: number;
+                    let canvasHeight: number;
+
+                    if (originalAspect >= 1) {
+                        canvasWidth = MAX_DIMENSION;
+                        canvasHeight = Math.round(MAX_DIMENSION / originalAspect);
+                    } else {
+                        canvasHeight = MAX_DIMENSION;
+                        canvasWidth = Math.round(MAX_DIMENSION * originalAspect);
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = canvasWidth;
+                    canvas.height = canvasHeight;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        resolve(null);
+                        return;
+                    }
+
+                    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvasWidth, canvasHeight);
+
+                    const overlayWidthRatio = 0.84;
+                    const overlayHeightRatio = 0.26;
+                    const rectW = Math.round(canvasWidth * overlayWidthRatio);
+                    const rectH = Math.round(canvasHeight * overlayHeightRatio);
+                    const rectX = (canvasWidth - rectW) / 2;
+                    const rectY = (canvasHeight - rectH) / 2;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(rectX, rectY, rectW, rectH);
+
+                    const orderedTotal = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                    let line1 = `Total Qty: ${orderedTotal}`;
+                    let line2 = "";
+                    if (log.hasSizes) {
+                        line2 = Object.entries(log.orderedQty).map(([k, v]) => `${k}:${v}`).join(', ');
+                    }
+
+                    const centerX = canvasWidth / 2;
+                    const fontSizeBase = Math.round(canvasHeight * 0.064);
+                    const supplierFontSize = Math.round(canvasHeight * 0.044);
+                    const sizesFontSize = Math.round(canvasHeight * 0.044);
+
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = `bold ${fontSizeBase}px sans-serif`;
+                    const line1Y = rectY + Math.round(rectH * 0.35);
+                    ctx.fillText(line1, centerX, line1Y);
+
+                    if (supplierName) {
+                        ctx.font = `${supplierFontSize}px sans-serif`;
+                        ctx.fillStyle = '#60a5fa';
+                        const supplierY = rectY + Math.round(rectH * 0.65);
+                        ctx.fillText(`Supplier: ${supplierName}`, centerX, supplierY);
+                    }
+
+                    if (line2) {
+                        ctx.font = `${sizesFontSize}px sans-serif`;
+                        ctx.fillStyle = '#fbbf24';
+                        const line2Y = rectY + Math.round(rectH * (supplierName ? 0.95 : 0.78));
+                        const maxWidth = rectW - Math.round(rectW * 0.12);
+                        let measured = ctx.measureText(line2).width;
+                        let fontSize = sizesFontSize;
+                        while (measured > maxWidth && fontSize > Math.round(canvasHeight * 0.024)) {
+                            fontSize -= 2;
+                            ctx.font = `${fontSize}px sans-serif`;
+                            measured = ctx.measureText(line2).width;
+                        }
+                        ctx.fillText(line2, centerX, line2Y);
+                    }
+                    ctx.textAlign = 'start';
+
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve({ blob, mimeType: 'image/jpeg' });
+                        } else {
+                            resolve(null);
+                        }
+                    }, 'image/jpeg', 0.9);
+                };
+
+                img.onerror = () => {
+                    resolve(null);
+                };
+            } catch (e) {
+                console.error("Error in watermark generation:", e);
+                resolve(null);
+            }
+        });
+    };
+
     const handleSendPO = async () => {
         if (logs.length === 0) {
             alert('No items to send');
@@ -489,25 +600,80 @@ const SupplierGroup: React.FC<{
 
         setIsSendingPO(true);
         try {
-            // Calculate total items quantity (sum of all ordered quantities)
-            let totalItemsQty = 0;
-            logs.forEach(log => {
-                totalItemsQty += Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-            });
+            // Generate watermarked images
+            const images: { blob: Blob; filename: string; mimeType: string }[] = [];
 
-            // Calculate total amount (sum of qty * price)
-            const totalAmount = logs.reduce((sum, log) => {
-                const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-                return sum + (qty * (log.price || 0));
-            }, 0);
+            for (let i = 0; i < logs.length; i++) {
+                const log = logs[i];
+                const product = products.find(p => p.id === log.productId);
 
-            const today = new Date().toLocaleDateString('en-IN');
-            const message = `*PICKUP ORDER*\nDate: ${today}\nSupplier: ${supplierName}\nTotal Items: ${totalItemsQty}\nTotal Amount: ₹${totalAmount.toLocaleString()}\n\nItems ready for pickup.`;
+                if (product?.imageUrl) {
+                    try {
+                        const watermarked = await generateWatermarkedImage(log, product, supplierName);
+                        if (watermarked) {
+                            let ext = 'jpg';
+                            if (watermarked.mimeType === 'image/png') ext = 'png';
+                            else if (watermarked.mimeType === 'image/webp') ext = 'webp';
+                            const filename = `Item_${String(i + 1).padStart(2, '0')}_${product.description?.replace(/[^a-z0-9]/gi, '_')}.${ext}`;
+                            images.push({ blob: watermarked.blob, filename, mimeType: watermarked.mimeType });
+                        }
+                    } catch (e) {
+                        console.error("Error generating watermarked image", e);
+                    }
+                }
+            }
 
-            // Open WhatsApp with message
+            if (images.length === 0) {
+                alert('No images to share');
+                return;
+            }
+
+            // Try native share API first (works on mobile and some desktop browsers)
+            if (navigator.share) {
+                try {
+                    const files = images.map(({ blob, filename, mimeType }) =>
+                        new File([blob], filename, { type: mimeType })
+                    );
+
+                    const shareData = {
+                        title: `Pickup: ${supplierName}`,
+                        files: files.length > 0 ? files : undefined
+                    };
+
+                    if (navigator.canShare && navigator.canShare(shareData)) {
+                        // Native share with files
+                        await navigator.share(shareData);
+                        return;
+                    } else if (files.length > 0 && navigator.canShare({ files: [files[0]] })) {
+                        // Try sharing just the first image
+                        await navigator.share({
+                            title: `Pickup: ${supplierName}`,
+                            files: [files[0]]
+                        });
+                        return;
+                    }
+                } catch (e: any) {
+                    if (e.name === 'AbortError') {
+                        return;
+                    }
+                    console.warn('Native share failed:', e);
+                }
+            }
+
+            // Fallback to WhatsApp Web with clipboard
             const phoneNumber = supplier.phone.replace(/[^0-9]/g, '');
-            const encodedMessage = encodeURIComponent(message);
-            const whatsappLink = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+
+            // Copy first image to clipboard
+            try {
+                const firstImage = images[0];
+                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': firstImage.blob })]);
+                alert(`Images copied! Click OK to open WhatsApp for ${supplierName}.\nPaste the images in the chat.`);
+            } catch (e) {
+                console.error("Copy to clipboard failed", e);
+            }
+
+            // Open WhatsApp Web without text message
+            const whatsappLink = `https://wa.me/${phoneNumber}`;
             window.open(whatsappLink, '_blank');
         } catch (error: any) {
             console.error('Error sending PO:', error);
