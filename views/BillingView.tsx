@@ -287,17 +287,15 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
 
   const handleSavePrice = async () => {
     if (!editPrice || isNaN(parseFloat(editPrice))) {
-      alert('Please enter a valid price');
       return;
     }
 
     setIsSaving(true);
     try {
       await onCreateEntry(log.id, parseFloat(editPrice), billingEntry?.gstEnabled || false);
-      alert('Price saved successfully');
+      setIsEditingPrice(false);
     } catch (error: any) {
       console.error('Error saving price:', error);
-      alert(`Error: ${error?.message || 'Failed to save price'}`);
     } finally {
       setIsSaving(false);
     }
@@ -466,116 +464,52 @@ const BillingEntryCard: React.FC<BillingEntryCardProps> = ({
       {billingEntry && (
         <>
           {/* Image Proofs */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             {/* Supplier Bill Proof */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] font-bold text-gray-700">Bill Proof</div>
-                <div className={`w-2.5 h-2.5 rounded-full ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              </div>
-
-              {billingEntry.supplierBillProof ? (
-                <div className="space-y-1">
-                  <img
-                    src={billingEntry.supplierBillProof.url}
-                    alt="bill"
-                    className="w-full h-16 object-cover rounded-lg border border-gray-200"
-                  />
-                  <button
-                    onClick={() => {
-                      if (canEdit) {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.onchange = (e: any) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleProofUpload(file, 'bill');
-                        };
-                        input.click();
-                      }
-                    }}
-                    disabled={!canEdit || isUploading}
-                    className="text-[9px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                  >
-                    Replace
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => billProofInputRef.current?.click()}
-                  disabled={!canEdit || isUploading}
-                  className="w-full flex flex-col items-center gap-0.5 py-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
-                >
-                  <Upload size={14} />
-                  <span className="text-[9px]">Upload</span>
-                </button>
+            <button
+              onClick={() => billProofInputRef.current?.click()}
+              disabled={!canEdit || isUploading}
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Upload size={16} className="text-gray-400" />
+              <span className="text-sm font-bold text-gray-700">Proof</span>
+              {billingEntry.supplierBillProof && (
+                <div className={`w-2.5 h-2.5 rounded-full ml-auto ${billProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               )}
-              <input
-                ref={billProofInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleProofUpload(file, 'bill');
-                }}
-                style={{ display: 'none' }}
-              />
-            </div>
+            </button>
+            <input
+              ref={billProofInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleProofUpload(file, 'bill');
+              }}
+              style={{ display: 'none' }}
+            />
 
             {/* Payment Proof */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] font-bold text-gray-700">Payment</div>
-                <div className={`w-2.5 h-2.5 rounded-full ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              </div>
-
-              {billingEntry.paymentProof ? (
-                <div className="space-y-1">
-                  <img
-                    src={billingEntry.paymentProof.url}
-                    alt="payment"
-                    className="w-full h-16 object-cover rounded-lg border border-gray-200"
-                  />
-                  <button
-                    onClick={() => {
-                      if (canEdit) {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.onchange = (e: any) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleProofUpload(file, 'payment');
-                        };
-                        input.click();
-                      }
-                    }}
-                    disabled={!canEdit || isUploading}
-                    className="text-[9px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                  >
-                    Replace
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => paymentProofInputRef.current?.click()}
-                  disabled={!canEdit || isUploading}
-                  className="w-full flex flex-col items-center gap-0.5 py-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
-                >
-                  <Upload size={14} />
-                  <span className="text-[9px]">Upload</span>
-                </button>
+            <button
+              onClick={() => paymentProofInputRef.current?.click()}
+              disabled={!canEdit || isUploading}
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Upload size={16} className="text-gray-400" />
+              <span className="text-sm font-bold text-gray-700">Dispatch</span>
+              {billingEntry.paymentProof && (
+                <div className={`w-2.5 h-2.5 rounded-full ml-auto ${paymentProofStatus === 'green' ? 'bg-green-500' : 'bg-red-500'}`}></div>
               )}
-              <input
-                ref={paymentProofInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleProofUpload(file, 'payment');
-                }}
-                style={{ display: 'none' }}
-              />
-            </div>
+            </button>
+            <input
+              ref={paymentProofInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleProofUpload(file, 'payment');
+              }}
+              style={{ display: 'none' }}
+            />
           </div>
 
           {/* Delete Button */}
