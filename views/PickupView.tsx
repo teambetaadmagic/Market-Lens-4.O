@@ -869,7 +869,7 @@ const SupplierGroup: React.FC<{
                     <span className="font-bold text-gray-900 text-sm truncate">{supplierName}</span>
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
-                            Items
+                            {totalPendingQty}
                         </span>
 
                         {tabType === 'today' && onScheduleNextDay && (
