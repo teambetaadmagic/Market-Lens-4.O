@@ -81,7 +81,49 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
 
         const supplierGroups = Object.entries(supplierMap).map(([supName, logs]) => {
             const firstLog = logs[0];
-            const totalPending = logs.reduce((acc, log) => {
+            const supplier = suppliers.find(s => s.id === firstLog.supplierId);
+
+            // Group logs by image hash to combine same products from different orders
+            const logsByHash: Record<string, DailyLog[]> = {};
+            logs.forEach(log => {
+                const product = products.find(p => p.id === log.productId);
+                const hashKey = product?.imageHash || log.productId; // Use image hash if available, fallback to productId
+                if (!logsByHash[hashKey]) {
+                    logsByHash[hashKey] = [];
+                }
+                logsByHash[hashKey].push(log);
+            });
+
+            // Merge logs with same image hash into a single combined log
+            const mergedLogs = Object.entries(logsByHash).map(([hashKey, hashLogs]) => {
+                if (hashLogs.length === 1) {
+                    return hashLogs[0]; // If only one, return as is
+                }
+
+                // Combine quantities from multiple logs with same image hash
+                const combinedLog = { ...hashLogs[0] };
+                const combinedOrderedQty: Record<string, number> = {};
+                const combinedDispatchedQty: Record<string, number> = {};
+
+                hashLogs.forEach(log => {
+                    // Merge ordered quantities
+                    Object.entries(log.orderedQty).forEach(([size, qty]) => {
+                        combinedOrderedQty[size] = (combinedOrderedQty[size] || 0) + (qty || 0);
+                    });
+                    // Merge dispatched quantities
+                    Object.entries(log.dispatchedQty || {}).forEach(([size, qty]) => {
+                        combinedDispatchedQty[size] = (combinedDispatchedQty[size] || 0) + (qty || 0);
+                    });
+                });
+
+                combinedLog.orderedQty = combinedOrderedQty;
+                combinedLog.dispatchedQty = combinedDispatchedQty;
+                combinedLog.id = hashKey; // Use hash as the combined log ID for display
+
+                return combinedLog;
+            });
+
+            const totalPending = mergedLogs.reduce((acc, log) => {
                 const ord: number = (Object.values(log.orderedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
                 const dispatched: number = (Object.values(log.dispatchedQty || {}) as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
                 return acc + Math.max(0, ord - dispatched);
@@ -90,13 +132,13 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
             return {
                 name: supName,
                 id: firstLog.supplierId || 'unknown',
-                logs: logs,
+                logs: mergedLogs.sort((a, b) => (b.history[0]?.timestamp || 0) - (a.history[0]?.timestamp || 0)),
                 totalPendingQty: totalPending
             };
         });
 
         return supplierGroups.sort((a, b) => b.totalPendingQty - a.totalPendingQty);
-    }, [activeLogs, suppliers]);
+    }, [activeLogs, suppliers, products]);
 
     // Dispatch History
     const historyLogs = useMemo(() => {
