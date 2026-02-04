@@ -41,10 +41,10 @@ export default async function handler(req, res) {
             console.log('[Shopify Order API] Fetching recent orders...');
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
 
             const response = await fetch(
-                `https://${fullDomain}/admin/api/2024-01/orders.json?limit=250&status=any&order=created_at:desc`,
+                `https://${fullDomain}/admin/api/2024-01/orders.json?limit=150&status=any&order=created_at:desc`,
                 {
                     method: 'GET',
                     cache: 'no-store',
@@ -142,7 +142,7 @@ export default async function handler(req, res) {
             try {
                 // Fetch product to get image - parallelized with timeout
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
                 
                 const productUrl = `https://${fullDomain}/admin/api/2024-01/products/${item.product_id}.json`;
                 const productResponse = await fetch(productUrl, {

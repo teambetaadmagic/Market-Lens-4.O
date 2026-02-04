@@ -1008,9 +1008,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         console.log(`[fetchShopifyOrder] Trying store: ${config.shopName || config.shopifyDomain} (attempt ${retryCount + 1})`);
         
-        // Add a request timeout of 20 seconds (faster fail)
+        // Add a request timeout of 15 seconds (faster fail)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         
         const response = await fetch('/api/shopify/order', {
           method: 'POST',
