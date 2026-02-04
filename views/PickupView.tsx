@@ -663,16 +663,15 @@ const SupplierGroup: React.FC<{
             // Fallback to WhatsApp Web with clipboard
             const phoneNumber = supplier.phone.replace(/[^0-9]/g, '');
 
-            // Copy first image to clipboard
+            // Copy first image to clipboard silently
             try {
                 const firstImage = images[0];
                 await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': firstImage.blob })]);
-                alert(`Images copied! Click OK to open WhatsApp for ${supplierName}.\nPaste the images in the chat.`);
             } catch (e) {
                 console.error("Copy to clipboard failed", e);
             }
 
-            // Open WhatsApp Web without text message
+            // Open WhatsApp Web without text message or alert
             const whatsappLink = `https://wa.me/${phoneNumber}`;
             window.open(whatsappLink, '_blank');
         } catch (error: any) {
