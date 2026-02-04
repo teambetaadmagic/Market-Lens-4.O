@@ -872,6 +872,55 @@ const SupplierGroup: React.FC<{
                             {totalPendingQty} Items
                         </span>
 
+                        {tabType === 'today' && onScheduleNextDay && (
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        const tomorrow = new Date();
+                                        tomorrow.setDate(tomorrow.getDate() + 1);
+                                        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+                                        // Schedule all logs for this supplier
+                                        for (const log of logs) {
+                                            await onScheduleNextDay(log.id, tomorrowStr);
+                                        }
+                                        alert(`Moved all ${logs.length} items to Next Day`);
+                                    } catch (error: any) {
+                                        console.error('Error scheduling:', error);
+                                        alert(`Error: ${error?.message || 'Failed to schedule'}`);
+                                    }
+                                }}
+                                className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
+                                title="Move all items to Next Day"
+                            >
+                                <Calendar size={14} />
+                                Move Next Day
+                            </button>
+                        )}
+
+                        {tabType === 'next-day' && onMoveToday && (
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        // Move all logs for this supplier back to Today
+                                        for (const log of logs) {
+                                            await onMoveToday(log.id, null);
+                                        }
+                                        alert(`Moved all ${logs.length} items back to Today`);
+                                    } catch (error: any) {
+                                        console.error('Error moving:', error);
+                                        alert(`Error: ${error?.message || 'Failed to move'}`);
+                                    }
+                                }}
+                                className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
+                                title="Move all items back to Today"
+                            >
+                                <Calendar size={14} />
+                                Move Today
+                            </button>
+                        )}
+
                         <button
                             onClick={(e) => { e.stopPropagation(); handleSendPO(); }}
                             disabled={isSendingPO}
