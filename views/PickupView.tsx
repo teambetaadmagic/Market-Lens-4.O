@@ -304,8 +304,11 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
                                                     className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden cursor-pointer shadow-sm"
                                                     onClick={() => {
                                                         if (product?.imageUrl) {
+                                                            const cleanDescription = product?.description && !product.description.toLowerCase().includes('item from order')
+                                                                ? product.description
+                                                                : 'Item';
                                                             setPreviewImage(product.imageUrl, {
-                                                                title: product?.description,
+                                                                title: cleanDescription,
                                                                 qty: `Sent: ${qty}`,
                                                                 tag: 'DISPATCHED'
                                                             });
@@ -316,7 +319,11 @@ export const PickupView: React.FC<PickupViewProps> = ({ setView }) => {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex justify-between items-start">
-                                                        <div className="text-xs font-bold text-gray-900 truncate pr-2">{product?.description}</div>
+                                                        <div className="text-xs font-bold text-gray-900 truncate pr-2">
+                                                            {product?.description && !product.description.toLowerCase().includes('item from order')
+                                                                ? product.description
+                                                                : 'Item'}
+                                                        </div>
                                                         <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
                                                             {timeStr}
                                                         </span>
