@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ChevronDown, ChevronUp, Check, Save, X, Clock, TrendingUp, Minus, Plus, Truck, Camera, Image as ImageIcon, History, Lock, Calendar, AlertCircle, Trash2, Info, Edit2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, Save, X, Clock, TrendingUp, Minus, Plus, Truck, Camera, Image as ImageIcon, History, Lock, Calendar, AlertCircle, Trash2, Info, Edit2, Send } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { DailyLog } from '../types';
 import { compressImage } from '../services/geminiService';
@@ -440,6 +440,7 @@ const SupplierGroup: React.FC<{
 }> = ({ supplierId, supplierName, logs, products, suppliers, onPickup, onDelete, canEdit, isAdmin }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isSendingPO, setIsSendingPO] = useState(false);
 
     // Calculate total pending quantity for this supplier (ordered - dispatched)
     const totalPendingQty = logs.reduce((acc: number, log) => {
@@ -474,6 +475,47 @@ const SupplierGroup: React.FC<{
         }
     };
 
+    const handleSendPO = async () => {
+        if (logs.length === 0) {
+            alert('No items to send');
+            return;
+        }
+
+        const supplier = suppliers.find(s => s.id === supplierId);
+        if (!supplier?.phone) {
+            alert('Supplier phone number not available');
+            return;
+        }
+
+        setIsSendingPO(true);
+        try {
+            // Calculate total items quantity (sum of all ordered quantities)
+            let totalItemsQty = 0;
+            logs.forEach(log => {
+                totalItemsQty += Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+            });
+
+            // Calculate total amount (sum of qty * price)
+            const totalAmount = logs.reduce((sum, log) => {
+                const qty = Object.values(log.orderedQty).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                return sum + (qty * (log.price || 0));
+            }, 0);
+
+            const today = new Date().toLocaleDateString('en-IN');
+            const message = `*PICKUP ORDER*\nDate: ${today}\nSupplier: ${supplierName}\nTotal Items: ${totalItemsQty}\nTotal Amount: ₹${totalAmount.toLocaleString()}\n\nItems ready for pickup.`;
+
+            // Open WhatsApp with message
+            const phoneNumber = supplier.phone.replace(/[^0-9]/g, '');
+            const encodedMessage = encodeURIComponent(message);
+            const whatsappLink = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+            window.open(whatsappLink, '_blank');
+        } catch (error: any) {
+            console.error('Error sending PO:', error);
+            alert(`Error: ${error?.message || 'Could not send PO'}`);
+        } finally {
+            setIsSendingPO(false);
+        }
+    };
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
@@ -488,6 +530,16 @@ const SupplierGroup: React.FC<{
                         <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
                             {totalPendingQty} Items
                         </span>
+
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleSendPO(); }}
+                            disabled={isSendingPO}
+                            className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition active:scale-95 disabled:opacity-50 text-[10px] font-bold flex items-center gap-1 whitespace-nowrap"
+                            title="Send pickup order via WhatsApp"
+                        >
+                            {isSendingPO ? <span className="inline-block animate-spin">⏳</span> : <Send size={14} />}
+                            Send PO
+                        </button>
 
                         {isAdmin && (
                             <button
