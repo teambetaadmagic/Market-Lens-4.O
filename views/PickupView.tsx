@@ -884,7 +884,6 @@ const SupplierGroup: React.FC<{
                                         for (const log of logs) {
                                             await onScheduleNextDay(log.id, tomorrowStr);
                                         }
-                                        alert(`Moved all ${logs.length} items to Next Day`);
                                     } catch (error: any) {
                                         console.error('Error scheduling:', error);
                                         alert(`Error: ${error?.message || 'Failed to schedule'}`);
@@ -907,7 +906,6 @@ const SupplierGroup: React.FC<{
                                         for (const log of logs) {
                                             await onMoveToday(log.id, null);
                                         }
-                                        alert(`Moved all ${logs.length} items back to Today`);
                                     } catch (error: any) {
                                         console.error('Error moving:', error);
                                         alert(`Error: ${error?.message || 'Failed to move'}`);
