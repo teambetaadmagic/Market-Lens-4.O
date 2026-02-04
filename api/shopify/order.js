@@ -88,15 +88,23 @@ export default async function handler(req, res) {
 
             console.log(`[Shopify Order API] Retrieved ${data.orders.length} orders from Shopify`);
 
-            // Search for exact match
-            order = data.orders.find(o => o.name === orderName);
+            // Search for exact match (case-insensitive)
+            const searchName = orderName.toLowerCase().trim();
+            order = data.orders.find(o => {
+                const oName = o.name.toLowerCase().trim();
+                // Match exact or without # prefix
+                return oName === searchName || 
+                       oName === searchName.replace('#', '') ||
+                       oName === `#${searchName.replace('#', '')}`;
+            });
 
             if (!order) {
                 console.log(`[Shopify Order API] Order "${orderName}" not found in ${data.orders.length} orders`);
                 console.log('[Shopify Order API] Available orders:', data.orders.slice(0, 5).map(o => o.name).join(', '));
                 return res.status(404).json({
                     success: false,
-                    message: `Order "${orderName}" not found in this store`
+                    message: `Order "${orderName}" not found in this store`,
+                    availableOrders: data.orders.slice(0, 5).map(o => o.name)
                 });
             }
             console.log('[Shopify Order API] ✅ Order found:', order.name, 'with', order.line_items.length, 'items');
