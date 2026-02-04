@@ -137,6 +137,15 @@ const SupplierBillingGroup: React.FC<SupplierBillingGroupProps> = ({
     return supplierGroup.dates.reduce((sum: number, dateGroup: any) => sum + dateGroup.totalReceivedQty, 0);
   }, [supplierGroup.dates]);
 
+  const totalAmount = useMemo(() => {
+    return supplierGroup.dates.reduce((sum: number, dateGroup: any) => {
+      return sum + dateGroup.logs.reduce((logSum: number, log: any) => {
+        const billing = billingEntries.find(b => b.inwardLogId === log.id);
+        return logSum + (billing?.totalAmount || 0);
+      }, 0);
+    }, 0);
+  }, [supplierGroup.dates, billingEntries]);
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
       {/* Supplier Header */}
@@ -147,9 +156,10 @@ const SupplierBillingGroup: React.FC<SupplierBillingGroupProps> = ({
         <div className="flex justify-between items-center">
           <span className="font-bold text-gray-900 text-sm truncate">{supplierGroup.supplierName}</span>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-500 shadow-sm">
-              {totalQty} Items
-            </span>
+            <div className="text-right">
+              <div className="text-[9px] text-gray-600 font-bold">Qty / Amount</div>
+              <div className="text-xs font-bold text-gray-900">{totalQty} / ₹{totalAmount}</div>
+            </div>
             <div className="text-gray-400">
               {expandedSupplier ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
@@ -213,6 +223,13 @@ const DateBillingGroup: React.FC<DateBillingGroupProps> = ({
 }) => {
   const formatDate = new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
 
+  const totalAmount = useMemo(() => {
+    return logs.reduce((sum: number, log: any) => {
+      const billing = billingEntries.find(b => b.inwardLogId === log.id);
+      return sum + (billing?.totalAmount || 0);
+    }, 0);
+  }, [logs, billingEntries]);
+
   return (
     <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
       {/* Date Header */}
@@ -222,9 +239,10 @@ const DateBillingGroup: React.FC<DateBillingGroupProps> = ({
       >
         <span className="text-sm font-bold text-gray-900">{formatDate}</span>
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-bold bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
-            {totalReceivedQty} Qty
-          </span>
+          <div className="text-right">
+            <div className="text-[9px] text-gray-600 font-bold">Qty / Amount</div>
+            <div className="text-xs font-bold text-gray-900">{totalReceivedQty} / ₹{totalAmount}</div>
+          </div>
           <div className="text-gray-400">
             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
